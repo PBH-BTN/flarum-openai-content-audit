@@ -1,7 +1,44 @@
 ghostchu-openai-content-audit:
-  # For more details on the format
-  # Checkout https://docs.flarum.org/2.x/extend/i18n/#appendix-a-standard-key-format
   admin:
-    my_cool_key: My Cool Key
+    settings:
+      api_section: API Configuration
+      api_endpoint: API Endpoint
+      api_endpoint_help: The base URL for OpenAI-compatible API (e.g., https://api.openai.com/v1)
+      api_key: API Key
+      api_key_help: Your OpenAI API key or compatible provider's key
+      model: Model Name
+      model_help: The model to use for content moderation (e.g., gpt-4o, gpt-4-turbo)
+      temperature: Temperature
+      temperature_help: "Controls randomness. Lower values (0.0-0.3) are more deterministic. Recommended: 0.3"
+
+      audit_section: Audit Policy
+      system_prompt: System Prompt
+      system_prompt_placeholder: Leave empty to use default prompt
+      system_prompt_help: Instructions for the LLM on how to audit content. Must request JSON response with "confidence", "actions", and "conclusion" fields.
+      confidence_threshold: Confidence Threshold
+      confidence_threshold_help: "Minimum confidence (0.0-1.0) required to take action. Recommended: 0.7"
+
+      behavior_section: Behavior Settings
+      pre_approve_enabled: Enable Pre-Approval Mode
+      pre_approve_enabled_help: When enabled, new posts/discussions will be unapproved by default until audit passes
+      download_images: Download Images for Vision Analysis
+      download_images_help: Attempt to download and encode images for better analysis. Falls back to URL if download fails.
+      suspend_days: Suspension Duration (Days)
+      suspend_days_help: How many days to suspend users when "suspend" action is triggered
+
+      defaults_section: Default Values
+      default_display_name: Default Display Name
+      default_display_name_help: Replacement value for violating display names (leave empty to use username)
+      default_bio: Default Bio
+      default_bio_help: Replacement value for violating bio content
+
+    permissions:
+      view_audit_logs: View audit logs
+      view_full_audit_logs: View full audit logs (including API requests/responses)
+      retry_audit: Retry failed audits
+      bypass_audit: Bypass content audit
+      bypass_pre_approve: Bypass pre-approval mode
 
   forum:
+    # Forum-side translations can be added here if needed
+

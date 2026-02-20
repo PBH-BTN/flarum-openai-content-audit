@@ -1,0 +1,412 @@
+<?php
+
+/*
+ * This file is part of ghostchu/openai-content-audit.
+ *
+ * Copyright (c) 2024 Ghost_chu.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+namespace Ghostchu\Openaicontentaudit\Service;
+
+use Flarum\Discussion\Discussion;
+use Flarum\Post\Post;
+use Flarum\Post\CommentPost;
+use Flarum\Settings\SettingsRepositoryInterface;
+use Flarum\User\User;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
+use Psr\Log\LoggerInterface;
+
+class ContentExtractor
+{
+    private const MAX_CONTEXT_LENGTH = 5000;
+    private const IMAGE_DOWNLOAD_TIMEOUT = 10;
+    private const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+
+    public function __construct(
+        private SettingsRepositoryInterface $settings,
+        private LoggerInterface $logger
+    ) {
+    }
+
+    /**
+     * Extract content from a post for auditing.
+     *
+     * @param Post $post
+     * @return array
+     */
+    public function extractPost(Post $post): array
+    {
+        $content = [];
+        $context = [];
+
+        // Extract post content
+        if ($post instanceof CommentPost) {
+            $content['text'] = $this->stripHtml($post->content);
+        }
+
+        // Extract discussion context
+        try {
+            $discussion = $post->discussion;
+            if ($discussion) {
+                $context['discussion_title'] = $discussion->title;
+                
+                // Get first post content as context
+                $firstPost = $discussion->firstPost;
+                if ($firstPost && $firstPost->id !== $post->id && $firstPost instanceof CommentPost) {
+                    $context['discussion_content'] = $this->truncate(
+                        $this->stripHtml($firstPost->content),
+                        self::MAX_CONTEXT_LENGTH
+                    );
+                }
+            }
+        } catch (\Exception $e) {
+            $this->logger->warning('[Content Extractor] Failed to extract discussion context', [
+                'post_id' => $post->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Extract user context
+        try {
+            $user = $post->user;
+            if ($user) {
+                $context['username'] = $user->username;
+                $context['display_name'] = $user->display_name;
+            }
+        } catch (\Exception $e) {
+            $this->logger->warning('[Content Extractor] Failed to extract user context', [
+                'post_id' => $post->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'type' => 'post',
+            'content' => $content,
+            'context' => $context,
+            'images' => [],
+        ];
+    }
+
+    /**
+     * Extract content from a discussion for auditing.
+     *
+     * @param Discussion $discussion
+     * @return array
+     */
+    public function extractDiscussion(Discussion $discussion): array
+    {
+        $content = [];
+        $context = [];
+
+        // Extract discussion title
+        $content['title'] = $discussion->title;
+
+        // Extract first post content
+        try {
+            $firstPost = $discussion->firstPost;
+            if ($firstPost && $firstPost instanceof CommentPost) {
+                $content['content'] = $this->truncate(
+                    $this->stripHtml($firstPost->content),
+                    self::MAX_CONTEXT_LENGTH
+                );
+            }
+        } catch (\Exception $e) {
+            $this->logger->warning('[Content Extractor] Failed to extract first post', [
+                'discussion_id' => $discussion->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Extract user context
+        try {
+            $user = $discussion->user;
+            if ($user) {
+                $context['username'] = $user->username;
+                $context['display_name'] = $user->display_name;
+            }
+        } catch (\Exception $e) {
+            $this->logger->warning('[Content Extractor] Failed to extract user context', [
+                'discussion_id' => $discussion->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'type' => 'discussion',
+            'content' => $content,
+            'context' => $context,
+            'images' => [],
+        ];
+    }
+
+    /**
+     * Extract user profile changes for auditing.
+     *
+     * @param User $user
+     * @param array $changes Changed attributes
+     * @return array
+     */
+    public function extractUserProfile(User $user, array $changes): array
+    {
+        $content = [];
+        $context = [];
+        $images = [];
+
+        // Extract changed fields
+        foreach ($changes as $field => $value) {
+            switch ($field) {
+                case 'username':
+                    $content['username'] = $value;
+                    break;
+                case 'display_name':
+                    $content['display_name'] = $value;
+                    break;
+                case 'bio':
+                    $content['bio'] = $this->truncate($value, self::MAX_CONTEXT_LENGTH);
+                    break;
+                case 'avatar_url':
+                    $content['avatar_url'] = $value;
+                    // Try to download avatar for vision analysis
+                    if ($this->shouldDownloadImages()) {
+                        $imageData = $this->downloadImage($value);
+                        if ($imageData) {
+                            $images[] = [
+                                'type' => 'avatar',
+                                'data' => $imageData,
+                            ];
+                        } else {
+                            $images[] = [
+                                'type' => 'avatar',
+                                'url' => $value,
+                            ];
+                        }
+                    } else {
+                        $images[] = [
+                            'type' => 'avatar',
+                            'url' => $value,
+                        ];
+                    }
+                    break;
+                case 'cover':
+                    $content['cover'] = $value;
+                    // Try to download cover image for vision analysis
+                    if ($this->shouldDownloadImages()) {
+                        $imageData = $this->downloadImage($value);
+                        if ($imageData) {
+                            $images[] = [
+                                'type' => 'cover',
+                                'data' => $imageData,
+                            ];
+                        } else {
+                            $images[] = [
+                                'type' => 'cover',
+                                'url' => $value,
+                            ];
+                        }
+                    } else {
+                        $images[] = [
+                            'type' => 'cover',
+                            'url' => $value,
+                        ];
+                    }
+                    break;
+            }
+        }
+
+        // Add context
+        $context['user_id'] = $user->id;
+        $context['joined_at'] = $user->joined_at?->toIso8601String();
+
+        return [
+            'type' => 'user_profile',
+            'content' => $content,
+            'context' => $context,
+            'images' => $images,
+        ];
+    }
+
+    /**
+     * Build messages array for OpenAI API.
+     *
+     * @param array $extractedData
+     * @param string $systemPrompt
+     * @return array
+     */
+    public function buildMessages(array $extractedData, string $systemPrompt): array
+    {
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+        ];
+
+        $userMessage = $this->formatUserMessage($extractedData);
+        
+        // Check if there are images
+        if (!empty($extractedData['images'])) {
+            $content = [
+                ['type' => 'text', 'text' => $userMessage],
+            ];
+
+            foreach ($extractedData['images'] as $image) {
+                if (isset($image['data'])) {
+                    // Base64 encoded image
+                    $content[] = [
+                        'type' => 'image_url',
+                        'image_url' => [
+                            'url' => $image['data'],
+                        ],
+                    ];
+                } elseif (isset($image['url'])) {
+                    // Image URL
+                    $content[] = [
+                        'type' => 'image_url',
+                        'image_url' => [
+                            'url' => $image['url'],
+                        ],
+                    ];
+                }
+            }
+
+            $messages[] = ['role' => 'user', 'content' => $content];
+        } else {
+            $messages[] = ['role' => 'user', 'content' => $userMessage];
+        }
+
+        return $messages;
+    }
+
+    /**
+     * Format extracted data as a user message.
+     *
+     * @param array $data
+     * @return string
+     */
+    private function formatUserMessage(array $data): string
+    {
+        $parts = [];
+
+        $parts[] = "Content Type: {$data['type']}";
+        $parts[] = '';
+
+        // Add content
+        if (!empty($data['content'])) {
+            $parts[] = 'Content to Review:';
+            foreach ($data['content'] as $key => $value) {
+                $parts[] = ucfirst(str_replace('_', ' ', $key)) . ': ' . $value;
+            }
+            $parts[] = '';
+        }
+
+        // Add context
+        if (!empty($data['context'])) {
+            $parts[] = 'Context:';
+            foreach ($data['context'] as $key => $value) {
+                $parts[] = ucfirst(str_replace('_', ' ', $key)) . ': ' . $value;
+            }
+        }
+
+        return implode("\n", $parts);
+    }
+
+    /**
+     * Strip HTML tags and decode entities.
+     *
+     * @param string $html
+     * @return string
+     */
+    private function stripHtml(string $html): string
+    {
+        $text = strip_tags($html);
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/\s+/', ' ', $text);
+        return trim($text);
+    }
+
+    /**
+     * Truncate text to a maximum length.
+     *
+     * @param string $text
+     * @param int $maxLength
+     * @return string
+     */
+    private function truncate(string $text, int $maxLength): string
+    {
+        if (mb_strlen($text) <= $maxLength) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, $maxLength) . '...';
+    }
+
+    /**
+     * Check if images should be downloaded.
+     *
+     * @return bool
+     */
+    private function shouldDownloadImages(): bool
+    {
+        return (bool) $this->settings->get('ghostchu.openaicontentaudit.download_images', true);
+    }
+
+    /**
+     * Download image and convert to base64 data URI.
+     *
+     * @param string $url
+     * @return string|null Base64 data URI or null if download fails
+     */
+    private function downloadImage(string $url): ?string
+    {
+        try {
+            $client = new Client([
+                'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
+                'connect_timeout' => 5,
+            ]);
+
+            $response = $client->get($url, [
+                'headers' => [
+                    'User-Agent' => 'Flarum-OpenAI-Content-Audit/1.0',
+                ],
+            ]);
+
+            $contentLength = $response->getHeader('Content-Length')[0] ?? 0;
+            if ($contentLength > self::MAX_IMAGE_SIZE) {
+                $this->logger->warning('[Content Extractor] Image too large', [
+                    'url' => $url,
+                    'size' => $contentLength,
+                ]);
+                return null;
+            }
+
+            $body = (string) $response->getBody();
+            $contentType = $response->getHeader('Content-Type')[0] ?? 'image/jpeg';
+
+            // Verify it's an image
+            if (!str_starts_with($contentType, 'image/')) {
+                $this->logger->warning('[Content Extractor] URL is not an image', [
+                    'url' => $url,
+                    'content_type' => $contentType,
+                ]);
+                return null;
+            }
+
+            $base64 = base64_encode($body);
+            return "data:{$contentType};base64,{$base64}";
+        } catch (GuzzleException $e) {
+            $this->logger->warning('[Content Extractor] Failed to download image', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        } catch (\Exception $e) {
+            $this->logger->error('[Content Extractor] Unexpected error downloading image', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+}

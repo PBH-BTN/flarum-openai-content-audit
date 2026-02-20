@@ -1,12 +1,18 @@
 {
     "name": "ghostchu/openai-content-audit",
+    "description": "Flarum extension that uses OpenAI-compatible LLM APIs to moderate user-generated content automatically",
     "keywords": [
-        "flarum"
+        "flarum",
+        "moderation",
+        "openai",
+        "content-audit",
+        "ai"
     ],
     "type": "flarum-extension",
     "license": "MIT",
     "require": {
-        "flarum/core": "^2.0"
+        "flarum/core": "^2.0",
+        "openai-php/client": "0.10.1"
     },
     "authors": [
         {

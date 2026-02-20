@@ -1,0 +1,43 @@
+ghostchu-openai-content-audit:
+  admin:
+    settings:
+      api_section: API 配置
+      api_endpoint: API 端点
+      api_endpoint_help: OpenAI 兼容 API 的基础 URL（例如：https://api.openai.com/v1）
+      api_key: API 密钥
+      api_key_help: 您的 OpenAI API 密钥或兼容提供商的密钥
+      model: 模型名称
+      model_help: 用于内容审核的模型（例如：gpt-4o、gpt-4-turbo）
+      temperature: 温度
+      temperature_help: 控制随机性。较低的值（0.0-0.3）更确定。推荐：0.3
+
+      audit_section: 审核策略
+      system_prompt: 系统提示词
+      system_prompt_placeholder: 留空使用默认提示词
+      system_prompt_help: 告诉 LLM 如何审核内容的指令。必须要求 JSON 响应，包含 "confidence"、"actions" 和 "conclusion" 字段。
+      confidence_threshold: 置信度阈值
+      confidence_threshold_help: 采取行动所需的最小置信度（0.0-1.0）。推荐：0.7
+
+      behavior_section: 行为设置
+      pre_approve_enabled: 启用先审后放模式
+      pre_approve_enabled_help: 启用后，新帖子/讨论将默认为未审核状态，直到审核通过
+      download_images: 下载图片进行视觉分析
+      download_images_help: 尝试下载并编码图片以进行更好的分析。如果下载失败，则回退到 URL。
+      suspend_days: 封禁时长（天）
+      suspend_days_help: 触发"封禁"操作时封禁用户的天数
+
+      defaults_section: 默认值
+      default_display_name: 默认显示名称
+      default_display_name_help: 违规显示名称的替换值（留空则使用用户名）
+      default_bio: 默认签名
+      default_bio_help: 违规签名内容的替换值
+
+    permissions:
+      view_audit_logs: 查看审核日志
+      view_full_audit_logs: 查看完整审核日志（包括 API 请求/响应）
+      retry_audit: 重试失败的审核
+      bypass_audit: 绕过内容审核
+      bypass_pre_approve: 绕过先审后放模式
+
+  forum:
+    # 论坛端翻译可在此添加
