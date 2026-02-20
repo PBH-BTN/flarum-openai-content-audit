@@ -26,7 +26,8 @@ class AuditResultHandler
     public function __construct(
         private SettingsRepositoryInterface $settings,
         private Dispatcher $events,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private MessageNotifier $messageNotifier
     ) {
     }
 
@@ -128,6 +129,44 @@ class AuditResultHandler
             }
 
             $executionLog['actions_executed'][] = $actionResult;
+        }
+
+        // Send violation notification via private message
+        if (!empty($executionLog['actions_executed'])) {
+            try {
+                $violations = $this->extractViolations($log);
+                $systemUser = $this->getSystemUser();
+
+                if ($systemUser) {
+                    $sent = $this->messageNotifier->sendViolationNotice(
+                        $user,
+                        $systemUser,
+                        $log->content_type,
+                        $violations,
+                        $confidence
+                    );
+
+                    $executionLog['message_sent'] = $sent;
+                    
+                    if ($sent) {
+                        $this->logger->info('[Audit Result Handler] Violation notice sent to user', [
+                            'log_id' => $log->id,
+                            'user_id' => $user->id,
+                        ]);
+                    }
+                } else {
+                    $executionLog['message_sent'] = false;
+                    $executionLog['message_error'] = 'system_user_not_found';
+                }
+            } catch (\Exception $e) {
+                $executionLog['message_sent'] = false;
+                $executionLog['message_error'] = $e->getMessage();
+                $this->logger->error('[Audit Result Handler] Failed to send violation notice', [
+                    'log_id' => $log->id,
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         // Save execution log
@@ -367,6 +406,38 @@ class AuditResultHandler
             'ghostchu.openaicontentaudit.confidence_threshold',
             0.7
         );
+    }
+
+    /**
+     * Extract violation reasons from audit log.
+     *
+     * @param AuditLog $log
+     * @return array
+     */
+    private function extractViolations(AuditLog $log): array
+    {
+        $violations = [];
+        $apiResponse = $log->api_response ?? [];
+
+        // Extract reasons from API response
+        if (isset($apiResponse['reasons']) && is_array($apiResponse['reasons'])) {
+            $violations = $apiResponse['reasons'];
+        } elseif (isset($apiResponse['reason']) && !empty($apiResponse['reason'])) {
+            $violations[] = $apiResponse['reason'];
+        }
+
+        // Fallback to actions if no reasons found
+        if (empty($violations) && !empty($log->actions_taken)) {
+            $violations = array_map(function ($action) {
+                return match ($action) {
+                    'hide' => '内容可能包含违规信息',
+                    'suspend' => '严重违反社区规范',
+                    default => '违反社区规范',
+                };
+            }, array_diff($log->actions_taken ?? [], ['none']));
+        }
+
+        return array_values(array_unique($violations));
     }
 
     /**

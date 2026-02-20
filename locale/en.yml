@@ -31,6 +31,14 @@ ghostchu-openai-content-audit:
       default_display_name_help: Replacement value for violating display names (leave empty to use username)
       default_bio: Default Bio
       default_bio_help: Replacement value for violating bio content
+      
+      notification_section: Notification Settings
+      send_message_notification: Send violation notification via private message
+      send_message_notification_help: When content is flagged as violating, sends a private message to the user via flarum/messages extension (requires flarum/messages to be installed)
+      system_user_id: System User ID
+      system_user_id_help: User ID used to send violation notification messages (typically a site administrator or bot account)
+      message_template: Message Template
+      message_template_help: "Template for the message content sent to users. Available placeholders: {content_type} (content type), {violations} (list of violations), {confidence} (confidence score)"
 
     permissions:
       view_audit_logs: View audit logs

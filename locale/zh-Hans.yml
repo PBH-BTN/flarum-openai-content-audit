@@ -31,6 +31,14 @@ ghostchu-openai-content-audit:
       default_display_name_help: 违规显示名称的替换值（留空则使用用户名）
       default_bio: 默认签名
       default_bio_help: 违规签名内容的替换值
+      
+      notification_section: 通知设置
+      send_message_notification: 发送违规通知私信
+      send_message_notification_help: 当内容被标记为违规时，通过 flarum/messages 扩展向用户发送私信通知（需要安装 flarum/messages）
+      system_user_id: 系统用户 ID
+      system_user_id_help: 用于发送违规通知私信的系统用户 ID（通常是站点管理员或机器人账号）
+      message_template: 私信模板
+      message_template_help: "发送给用户的私信内容模板。可用占位符：{content_type}（内容类型）、{violations}（违规原因列表）、{confidence}（置信度）"
 
     permissions:
       view_audit_logs: 查看审核日志

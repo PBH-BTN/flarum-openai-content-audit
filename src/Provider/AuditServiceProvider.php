@@ -14,6 +14,7 @@ namespace Ghostchu\Openaicontentaudit\Provider;
 use Flarum\Foundation\AbstractServiceProvider;
 use Ghostchu\Openaicontentaudit\Service\AuditResultHandler;
 use Ghostchu\Openaicontentaudit\Service\ContentExtractor;
+use Ghostchu\Openaicontentaudit\Service\MessageNotifier;
 use Ghostchu\Openaicontentaudit\Service\OpenAIClient;
 
 class AuditServiceProvider extends AbstractServiceProvider
@@ -37,11 +38,20 @@ class AuditServiceProvider extends AbstractServiceProvider
             );
         });
 
+        $this->container->singleton(MessageNotifier::class, function ($container) {
+            return new MessageNotifier(
+                $container->make('flarum.settings'),
+                $container->make('events'),
+                $container->make('log')
+            );
+        });
+
         $this->container->singleton(AuditResultHandler::class, function ($container) {
             return new AuditResultHandler(
                 $container->make('flarum.settings'),
                 $container->make('events'),
-                $container->make('log')
+                $container->make('log'),
+                $container->make(MessageNotifier::class)
             );
         });
     }

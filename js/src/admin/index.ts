@@ -98,6 +98,31 @@ app.initializers.add('ghostchu-openai-content-audit', () => {
     default: ''
   });
   
+  // Message Notification Settings
+  app.registry.registerSetting({
+    type: 'switch',
+    setting: 'ghostchu.openaicontentaudit.send_message_notification',
+    label: app.translator.trans('ghostchu-openai-content-audit.admin.settings.send_message_notification'),
+    help: app.translator.trans('ghostchu-openai-content-audit.admin.settings.send_message_notification_help'),
+    default: 'true'
+  });
+  
+  app.registry.registerSetting({
+    type: 'number',
+    setting: 'ghostchu.openaicontentaudit.system_user_id',
+    label: app.translator.trans('ghostchu-openai-content-audit.admin.settings.system_user_id'),
+    help: app.translator.trans('ghostchu-openai-content-audit.admin.settings.system_user_id_help'),
+    min: 1,
+    default: '1'
+  });
+  
+  app.registry.registerSetting({
+    type: 'textarea',
+    setting: 'ghostchu.openaicontentaudit.message_template',
+    label: app.translator.trans('ghostchu-openai-content-audit.admin.settings.message_template'),
+    help: app.translator.trans('ghostchu-openai-content-audit.admin.settings.message_template_help'),
+  });
+  
   // Register permissions
   app.registry.registerPermission(
     {
