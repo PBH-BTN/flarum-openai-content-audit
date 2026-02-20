@@ -38,7 +38,7 @@ ghostchu-openai-content-audit:
       system_user_id: 系统用户 ID
       system_user_id_help: 用于发送违规通知私信的系统用户 ID（通常是站点管理员或机器人账号）
       message_template: 私信模板
-      message_template_help: "发送给用户的私信内容模板。可用占位符：{content_type}（内容类型）、{violations}（违规原因列表）、{confidence}（置信度）"
+      message_template_help: "发送给用户的私信内容模板。可用占位符：{content_type}（内容类型）、{conclusion}（AI 给出的违规结论）、{confidence}（置信度）"
 
     permissions:
       view_audit_logs: 查看审核日志

@@ -32,7 +32,7 @@ class MessageNotifier
      * @param User $user The user who violated rules
      * @param User $sender The system user who sends the message
      * @param string $contentType Type of content (post, discussion, user_profile)
-     * @param array $violations Array of violation reasons
+     * @param string $conclusion AI conclusion about the violation
      * @param float $confidence Confidence score
      * @return bool Whether the message was sent successfully
      */
@@ -40,7 +40,7 @@ class MessageNotifier
         User $user,
         User $sender,
         string $contentType,
-        array $violations,
+        string $conclusion,
         float $confidence
     ): bool {
         // Check if message notification is enabled
@@ -57,7 +57,7 @@ class MessageNotifier
 
         try {
             // Format message content
-            $messageContent = $this->formatMessage($contentType, $violations, $confidence);
+            $messageContent = $this->formatMessage($contentType, $conclusion, $confidence);
 
             // Find or create dialog
             $dialog = \Flarum\Messages\Dialog::query()
@@ -128,11 +128,11 @@ class MessageNotifier
      * Format message content based on template.
      *
      * @param string $contentType
-     * @param array $violations
+     * @param string $conclusion AI conclusion about the violation
      * @param float $confidence
      * @return string
      */
-    private function formatMessage(string $contentType, array $violations, float $confidence): string
+    private function formatMessage(string $contentType, string $conclusion, float $confidence): string
     {
         // Get custom template or use default
         $template = $this->settings->get('ghostchu.openaicontentaudit.message_template');
@@ -141,19 +141,14 @@ class MessageNotifier
             $template = $this->getDefaultTemplate();
         }
 
-        // Format violations list
-        $violationsList = '';
-        foreach ($violations as $violation) {
-            $violationsList .= '- ' . $violation . "\n";
-        }
-
         // Replace placeholders
         $message = str_replace(
-            ['{content_type}', '{violations}', '{confidence}'],
+            ['{content_type}', '{violations}', '{confidence}', '{conclusion}'],
             [
                 $this->translateContentType($contentType),
-                trim($violationsList),
-                number_format($confidence * 100, 1) . '%'
+                $conclusion,
+                number_format($confidence * 100, 1) . '%',
+                $conclusion
             ],
             $template
         );
@@ -174,11 +169,11 @@ class MessageNotifier
 系统检测到您发布的内容（类型：{content_type}）可能违反了社区规范。
 
 **违规原因：**
-{violations}
+{conclusion}
 
 **置信度：** {confidence}
 
-您的内容已被自动隐藏，请修改后重新发布。如有疑问，请联系管理员。
+您的内容已被自动处理，如有疑问，请联系管理员。
 
 感谢您的理解与配合。
 TEXT;

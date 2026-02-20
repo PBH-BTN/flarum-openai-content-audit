@@ -134,15 +134,17 @@ class AuditResultHandler
         // Send violation notification via private message
         if (!empty($executionLog['actions_executed'])) {
             try {
-                $violations = $this->extractViolations($log);
                 $systemUser = $this->getSystemUser();
 
                 if ($systemUser) {
+                    // Use AI conclusion as the main violation reason
+                    $conclusion = $log->conclusion ?? '内容可能违反社区规范';
+                    
                     $sent = $this->messageNotifier->sendViolationNotice(
                         $user,
                         $systemUser,
                         $log->content_type,
-                        $violations,
+                        $conclusion,
                         $confidence
                     );
 
@@ -272,25 +274,33 @@ class AuditResultHandler
             7
         );
 
+        // Get AI conclusion as suspend reason
+        $suspendReason = $log->conclusion ?? '违反社区规范';
+        
         $user->suspended_until = Carbon::now()->addDays($suspendDays);
+        $user->suspend_reason = $suspendReason;  // Set suspend reason
+        $user->suspend_message = $suspendReason; // Set suspend message for user visibility
         $user->save();
 
         $actionResult['details'] = 'user_suspended';
         $actionResult['user_id'] = $user->id;
         $actionResult['suspend_days'] = $suspendDays;
+        $actionResult['suspend_reason'] = $suspendReason;
         $actionResult['suspended_until'] = $user->suspended_until->toIso8601String();
 
         $this->logger->info('[Audit Result Handler] User suspended', [
             'log_id' => $log->id,
             'user_id' => $user->id,
+            'suspend_reason' => $suspendReason,
             'suspended_until' => $user->suspended_until->toIso8601String(),
         ]);
 
         // Dispatch suspended event if extension is available
         try {
             if (class_exists('Flarum\Suspend\Event\Suspended')) {
+                $actor = $this->getSystemUser();
                 $this->events->dispatch(
-                    new \Flarum\Suspend\Event\Suspended($user, $this->getSystemUser())
+                    new \Flarum\Suspend\Event\Suspended($user, $actor)
                 );
             }
         } catch (\Exception $e) {
@@ -406,38 +416,6 @@ class AuditResultHandler
             'ghostchu.openaicontentaudit.confidence_threshold',
             0.7
         );
-    }
-
-    /**
-     * Extract violation reasons from audit log.
-     *
-     * @param AuditLog $log
-     * @return array
-     */
-    private function extractViolations(AuditLog $log): array
-    {
-        $violations = [];
-        $apiResponse = $log->api_response ?? [];
-
-        // Extract reasons from API response
-        if (isset($apiResponse['reasons']) && is_array($apiResponse['reasons'])) {
-            $violations = $apiResponse['reasons'];
-        } elseif (isset($apiResponse['reason']) && !empty($apiResponse['reason'])) {
-            $violations[] = $apiResponse['reason'];
-        }
-
-        // Fallback to actions if no reasons found
-        if (empty($violations) && !empty($log->actions_taken)) {
-            $violations = array_map(function ($action) {
-                return match ($action) {
-                    'hide' => '内容可能包含违规信息',
-                    'suspend' => '严重违反社区规范',
-                    default => '违反社区规范',
-                };
-            }, array_diff($log->actions_taken ?? [], ['none']));
-        }
-
-        return array_values(array_unique($violations));
     }
 
     /**

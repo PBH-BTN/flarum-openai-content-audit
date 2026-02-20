@@ -38,7 +38,7 @@ ghostchu-openai-content-audit:
       system_user_id: System User ID
       system_user_id_help: User ID used to send violation notification messages (typically a site administrator or bot account)
       message_template: Message Template
-      message_template_help: "Template for the message content sent to users. Available placeholders: {content_type} (content type), {violations} (list of violations), {confidence} (confidence score)"
+      message_template_help: "Template for the message content sent to users. Available placeholders: {content_type} (content type), {conclusion} (AI violation conclusion), {confidence} (confidence score)"
 
     permissions:
       view_audit_logs: View audit logs
