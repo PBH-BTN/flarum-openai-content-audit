@@ -329,13 +329,13 @@ class AuditResultHandler
                     break;
 
                 case 'cover':
-                    // Remove cover image (from flarum-profile-cover extension)
+                    // Remove cover image (from sycho/flarum-profile-cover extension)
                     if (property_exists($user, 'cover') || isset($user->cover)) {
                         $revertedFields[$field] = [
-                            'old' => $user->cover ?? '',
-                            'new' => '',
+                            'old' => $user->cover ?? null,
+                            'new' => null,
                         ];
-                        $user->cover = '';
+                        $user->cover = null;
                         $changed = true;
                         $this->logger->info('[Audit Result Handler] Removed cover image', [
                             'log_id' => $log->id,
