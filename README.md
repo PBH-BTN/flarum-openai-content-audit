@@ -38,6 +38,8 @@ A [Flarum](https://flarum.org) 2.0 extension that automatically moderates user-g
 
 - `fof/user-bio` - For bio field auditing
 - `flarum/nicknames` - For nickname auditing
+- `sycho/flarum-profile-cover` - For profile cover image auditing
+- `flarum/messages` - For sending violation notices via private messages
 
 ## Installation
 
@@ -155,6 +157,8 @@ Be strict but fair. Err on caution for borderline cases.
 
 ## How It Works
 
+### Text Content Auditing
+
 1. **Content Creation/Edit**: User creates or edits content (post, discussion, profile)
 2. **Event Trigger**: Extension listens to Flarum events (`Post\Event\Saving`, etc.)
 3. **Pre-Approval** (if enabled): Content marked as unapproved immediately
@@ -165,8 +169,33 @@ Be strict but fair. Err on caution for borderline cases.
 8. **Log Creation**: Stores audit log with confidence, actions, and conclusion
 9. **Action Execution**: If confidence ≥ threshold:
    - **Hide**: Set `is_approved = false` on content, or revert profile fields to defaults
-   - **Suspend**: Set `suspended_until` on user
+   - **Suspend**: Set `suspended_until` on user with AI conclusion as reason
+   - **Notify**: Send private message to user explaining the violation
 10. **Retry Logic**: Failed audits retry with exponential backoff (1min, 5min, 15min)
+
+### Image Auditing
+
+The extension automatically detects and audits images in:
+- **User Avatars**: Triggered on avatar upload/change
+- **Profile Covers**: Requires sycho/flarum-profile-cover extension
+- **Post/Discussion Images**: Extracted from content using multiple methods
+
+**Supported Image Formats:**
+```markdown
+![](https://example.com/image.jpg)              # Markdown syntax
+<img src="https://example.com/image.jpg">       # HTML tag
+<IMG src="https://example.com/image.jpg">       # S9e TextFormatter
+https://example.com/image.jpg                   # Direct URL
+```
+
+**Image Processing:**
+1. **Extract URLs**: Parse content for image URLs using regex patterns
+2. **Download** (if enabled): Download image and encode as base64 (max 5MB, 10s timeout)
+3. **Fallback**: Use URL if download fails
+4. **Vision API**: Send to OpenAI Vision API with text content
+5. **Action**: Take appropriate action based on AI response
+
+**See [IMAGE-AUDIT.md](docs/IMAGE-AUDIT.md) for detailed information.**
 
 ## Audit Logs
 
