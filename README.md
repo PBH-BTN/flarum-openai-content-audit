@@ -8,11 +8,16 @@ A [Flarum](https://flarum.org) 2.0 extension that automatically moderates user-g
 
 - 🤖 **AI-Powered Moderation**: Uses OpenAI or compatible LLM providers to analyze content
 - 🔍 **Comprehensive Auditing**: Monitors posts, discussions, usernames, nicknames, bios, avatars, and profile covers
+- 🖼️ **Image Auditing**: Automatically audits images in posts/discussions and user avatars/covers using Vision API
+  - Supports Markdown syntax: `![](url)`
+  - Supports HTML tags: `<img>`, `<IMG>`
+  - Supports direct image URLs
+  - Smart download with URL fallback
 - ⚡ **Asynchronous Processing**: Queue-based system prevents blocking user actions
 - 🎯 **Configurable Actions**: Automatically hide/unapprove content or suspend users based on violations
-- 🖼️ **Vision Support**: Optional image download for avatar and cover image moderation with GPT-4 Vision
+- 💬 **User Notifications**: Send private messages to users explaining violations (requires flarum/messages)
 - 🛡️ **Pre-Approval Mode**: Hold new content until AI audit completes
-- 📊 **Full Audit Logs**: Track all moderation decisions with confidence scores
+- 📊 **Full Audit Logs**: Track all moderation decisions with confidence scores and execution logs
 - 🔐 **Permission System**: Granular permissions for bypassing audits and viewing logs
 - 🔄 **Retry Logic**: Automatic retry with exponential backoff for failed API calls
 - 🌍 **Database Agnostic**: Works with MySQL, PostgreSQL, and SQLite

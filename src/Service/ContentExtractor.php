@@ -42,10 +42,36 @@ class ContentExtractor
     {
         $content = [];
         $context = [];
+        $images = [];
 
         // Extract post content
         if ($post instanceof CommentPost) {
-            $content['text'] = $this->stripHtml($post->content);
+            $rawContent = $post->content;
+            $content['text'] = $this->stripHtml($rawContent);
+            
+            // Extract images from post content
+            $imageUrls = $this->extractImagesFromContent($rawContent);
+            foreach ($imageUrls as $imageUrl) {
+                if ($this->shouldDownloadImages()) {
+                    $imageData = $this->downloadImage($imageUrl);
+                    if ($imageData) {
+                        $images[] = [
+                            'type' => 'post_image',
+                            'data' => $imageData,
+                        ];
+                    } else {
+                        $images[] = [
+                            'type' => 'post_image',
+                            'url' => $imageUrl,
+                        ];
+                    }
+                } else {
+                    $images[] = [
+                        'type' => 'post_image',
+                        'url' => $imageUrl,
+                    ];
+                }
+            }
         }
 
         // Extract discussion context
@@ -88,7 +114,7 @@ class ContentExtractor
             'type' => 'post',
             'content' => $content,
             'context' => $context,
-            'images' => [],
+            'images' => $images,
         ];
     }
 
@@ -102,6 +128,7 @@ class ContentExtractor
     {
         $content = [];
         $context = [];
+        $images = [];
 
         // Extract discussion title
         $content['title'] = $discussion->title;
@@ -110,10 +137,35 @@ class ContentExtractor
         try {
             $firstPost = $discussion->firstPost;
             if ($firstPost && $firstPost instanceof CommentPost) {
+                $rawContent = $firstPost->content;
                 $content['content'] = $this->truncate(
-                    $this->stripHtml($firstPost->content),
+                    $this->stripHtml($rawContent),
                     self::MAX_CONTEXT_LENGTH
                 );
+                
+                // Extract images from discussion content
+                $imageUrls = $this->extractImagesFromContent($rawContent);
+                foreach ($imageUrls as $imageUrl) {
+                    if ($this->shouldDownloadImages()) {
+                        $imageData = $this->downloadImage($imageUrl);
+                        if ($imageData) {
+                            $images[] = [
+                                'type' => 'discussion_image',
+                                'data' => $imageData,
+                            ];
+                        } else {
+                            $images[] = [
+                                'type' => 'discussion_image',
+                                'url' => $imageUrl,
+                            ];
+                        }
+                    } else {
+                        $images[] = [
+                            'type' => 'discussion_image',
+                            'url' => $imageUrl,
+                        ];
+                    }
+                }
             }
         } catch (\Exception $e) {
             $this->logger->warning('[Content Extractor] Failed to extract first post', [
@@ -140,7 +192,7 @@ class ContentExtractor
             'type' => 'discussion',
             'content' => $content,
             'context' => $context,
-            'images' => [],
+            'images' => $images,
         ];
     }
 
@@ -301,6 +353,13 @@ class ContentExtractor
             $parts[] = '';
         }
 
+        // Add image count if present
+        if (!empty($data['images'])) {
+            $imageCount = count($data['images']);
+            $parts[] = "Images: {$imageCount} image(s) attached for review";
+            $parts[] = '';
+        }
+
         // Add context
         if (!empty($data['context'])) {
             $parts[] = 'Context:';
@@ -350,6 +409,53 @@ class ContentExtractor
     private function shouldDownloadImages(): bool
     {
         return (bool) $this->settings->get('ghostchu.openaicontentaudit.download_images', true);
+    }
+
+    /**
+     * Extract image URLs from content (XML, HTML, or Markdown).
+     *
+     * @param string $content
+     * @return array Array of unique image URLs
+     */
+    private function extractImagesFromContent(string $content): array
+    {
+        $imageUrls = [];
+
+        // 1. Extract from S9e TextFormatter IMG tags: <IMG src="url">
+        if (preg_match_all('/<IMG\s+src=["\']([^"\']+)["\']/i', $content, $matches)) {
+            $imageUrls = array_merge($imageUrls, $matches[1]);
+        }
+
+        // 2. Extract from HTML img tags: <img src="url">
+        if (preg_match_all('/<img\s+[^>]*src=["\']([^"\']+)["\']/i', $content, $matches)) {
+            $imageUrls = array_merge($imageUrls, $matches[1]);
+        }
+
+        // 3. Extract from Markdown syntax: ![alt](url)
+        if (preg_match_all('/!\[(?:[^\]]*)\]\(([^)]+)\)/', $content, $matches)) {
+            $imageUrls = array_merge($imageUrls, $matches[1]);
+        }
+
+        // 4. Extract direct image URLs (ending with image extensions)
+        if (preg_match_all('/https?:\/\/[^\s<>"\']+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?[^\s<>"\']*)?/i', $content, $matches)) {
+            $imageUrls = array_merge($imageUrls, $matches[0]);
+        }
+
+        // Remove duplicates and filter valid URLs
+        $imageUrls = array_unique($imageUrls);
+        $imageUrls = array_filter($imageUrls, function ($url) {
+            return filter_var($url, FILTER_VALIDATE_URL) !== false;
+        });
+
+        // Log extracted images
+        if (!empty($imageUrls)) {
+            $this->logger->debug('[Content Extractor] Extracted images from content', [
+                'count' => count($imageUrls),
+                'urls' => $imageUrls,
+            ]);
+        }
+
+        return array_values($imageUrls);
     }
 
     /**
