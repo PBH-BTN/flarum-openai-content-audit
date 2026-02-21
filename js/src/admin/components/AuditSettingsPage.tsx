@@ -13,9 +13,9 @@ export default class AuditSettingsPage extends ExtensionPage {
       <div className="OpenAIContentAuditSettingsPage">
         <div className="container">
           <div className="OpenAIContentAuditSettingsPage-section">
-            <h3>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.api_section')}</h3>
+            <h3>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.api_section')}</h3>
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.api_endpoint')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.api_endpoint')}</label>
               <input
                 className="FormControl"
                 type="text"
@@ -23,12 +23,12 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder="https://api.openai.com/v1"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.api_endpoint_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.api_endpoint_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.api_key')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.api_key')}</label>
               <input
                 className="FormControl"
                 type="password"
@@ -36,12 +36,12 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder="sk-..."
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.api_key_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.api_key_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.model')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.model')}</label>
               <input
                 className="FormControl"
                 type="text"
@@ -49,12 +49,12 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder="gpt-4o"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.model_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.model_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.temperature')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.temperature')}</label>
               <input
                 className="FormControl"
                 type="number"
@@ -65,29 +65,29 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder="0.3"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.temperature_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.temperature_help')}
               </p>
             </div>
           </div>
 
           <div className="OpenAIContentAuditSettingsPage-section">
-            <h3>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.audit_section')}</h3>
+            <h3>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.audit_section')}</h3>
             
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.system_prompt')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.system_prompt')}</label>
               <textarea
                 className="FormControl"
                 rows={10}
                 bidi={this.setting('ghostchu.openaicontentaudit.system_prompt')}
-                placeholder={app.translator.trans('ghostchu-openaicontentaudit.admin.settings.system_prompt_placeholder')}
+                placeholder={app.translator.trans('ghostchu-openai-content-audit.admin.settings.system_prompt_placeholder')}
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.system_prompt_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.system_prompt_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.confidence_threshold')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.confidence_threshold')}</label>
               <input
                 className="FormControl"
                 type="number"
@@ -98,13 +98,13 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder="0.7"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.confidence_threshold_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.confidence_threshold_help')}
               </p>
             </div>
           </div>
 
           <div className="OpenAIContentAuditSettingsPage-section">
-            <h3>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.behavior_section')}</h3>
+            <h3>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.behavior_section')}</h3>
             
             <div className="Form-group">
               <label className="checkbox">
@@ -112,10 +112,10 @@ export default class AuditSettingsPage extends ExtensionPage {
                   type="checkbox"
                   bidi={this.setting('ghostchu.openaicontentaudit.pre_approve_enabled')}
                 />
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.pre_approve_enabled')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.pre_approve_enabled')}
               </label>
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.pre_approve_enabled_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.pre_approve_enabled_help')}
               </p>
             </div>
 
@@ -125,15 +125,15 @@ export default class AuditSettingsPage extends ExtensionPage {
                   type="checkbox"
                   bidi={this.setting('ghostchu.openaicontentaudit.download_images')}
                 />
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.download_images')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.download_images')}
               </label>
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.download_images_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.download_images_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.suspend_days')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.suspend_days')}</label>
               <input
                 className="FormControl"
                 type="number"
@@ -143,63 +143,63 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder="7"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.suspend_days_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.suspend_days_help')}
               </p>
             </div>
           </div>
 
           <div className="OpenAIContentAuditSettingsPage-section">
-            <h3>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_section')}</h3>
+            <h3>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_section')}</h3>
             
             <div className="Form-group">
               <label className="checkbox">
                 <input
                   type="checkbox"
-                  bidi={this.setting('ghostchu-openaicontentaudit.upload_audit_enabled')}
+                  bidi={this.setting('ghostchu-openai-content-audit.upload_audit_enabled')}
                 />
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_enabled')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_enabled')}
               </label>
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_enabled_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_enabled_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_image_max_size')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_image_max_size')}</label>
               <input
                 className="FormControl"
                 type="number"
                 min="1"
                 max="100"
-                bidi={this.setting('ghostchu-openaicontentaudit.upload_audit_image_max_size')}
+                bidi={this.setting('ghostchu-openai-content-audit.upload_audit_image_max_size')}
                 placeholder="10"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_image_max_size_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_image_max_size_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_text_max_size')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_text_max_size')}</label>
               <input
                 className="FormControl"
                 type="number"
                 min="1"
                 max="1024"
-                bidi={this.setting('ghostchu-openaicontentaudit.upload_audit_text_max_size')}
+                bidi={this.setting('ghostchu-openai-content-audit.upload_audit_text_max_size')}
                 placeholder="64"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_text_max_size_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_text_max_size_help')}
               </p>
             </div>
           </div>
 
           <div className="OpenAIContentAuditSettingsPage-section">
-            <h3>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.defaults_section')}</h3>
+            <h3>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.defaults_section')}</h3>
             
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.default_display_name')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.default_display_name')}</label>
               <input
                 className="FormControl"
                 type="text"
@@ -207,12 +207,12 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder="User"
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.default_display_name_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.default_display_name_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.default_bio')}</label>
+              <label>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.default_bio')}</label>
               <input
                 className="FormControl"
                 type="text"
@@ -220,7 +220,7 @@ export default class AuditSettingsPage extends ExtensionPage {
                 placeholder=""
               />
               <p className="helpText">
-                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.default_bio_help')}
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.default_bio_help')}
               </p>
             </div>
           </div>
