@@ -12,7 +12,7 @@
 namespace Ghostchu\Openaicontentaudit\Service;
 
 use Flarum\Settings\SettingsRepositoryInterface;
-use OpenAI\Client;
+use GuzzleHttp\Client as GuzzleClient;
 use Psr\Log\LoggerInterface;
 
 class OpenAIClient
@@ -41,7 +41,13 @@ class OpenAIClient
      */
     public function auditContent(array $messages): array
     {
-        $client = $this->createClient();
+        $apiKey = $this->getSetting('api_key');
+        $baseUrl = rtrim($this->getSetting('api_endpoint', self::DEFAULT_ENDPOINT), '/');
+        $timeout = (int) $this->getSetting('timeout', self::DEFAULT_TIMEOUT);
+        
+        if (empty($apiKey)) {
+            throw new \Exception('OpenAI API key not configured');
+        }
         
         $model = $this->getSetting('model', self::DEFAULT_MODEL);
         $temperature = (float) $this->getSetting('temperature', self::DEFAULT_TEMPERATURE);
@@ -55,29 +61,46 @@ class OpenAIClient
         ]);
 
         try {
-            $response = $client->chat()->create([
-                'model' => $model,
-                'messages' => $messages,
-                'temperature' => $temperature,
-                'max_tokens' => $maxTokens,
-                'response_format' => [
-                    'type' => 'json_schema',
-                    'json_schema' => $this->getAuditResponseSchema(),
+            $client = new GuzzleClient([
+                'timeout' => $timeout,
+                'connect_timeout' => 10,
+            ]);
+            
+            $response = $client->post($baseUrl . '/chat/completions', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $apiKey,
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'model' => $model,
+                    'messages' => $messages,
+                    'temperature' => $temperature,
+                    'max_tokens' => $maxTokens,
+                    'response_format' => [
+                        'type' => 'json_schema',
+                        'json_schema' => $this->getAuditResponseSchema(),
+                    ],
                 ],
             ]);
 
-            $content = $response->choices[0]->message->content ?? null;
+            $responseData = json_decode($response->getBody()->getContents(), true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Failed to parse API response: ' . json_last_error_msg());
+            }
+            
+            $content = $responseData['choices'][0]['message']['content'] ?? null;
             
             if (empty($content)) {
                 throw new \Exception('Empty response from OpenAI API');
             }
 
             $this->logger->debug('[OpenAI Content Audit] Received response', [
-                'finish_reason' => $response->choices[0]->finishReason ?? 'unknown',
+                'finish_reason' => $responseData['choices'][0]['finish_reason'] ?? 'unknown',
                 'format_version' => self::FORMAT_JSON_SCHEMA,
                 'usage' => [
-                    'prompt_tokens' => $response->usage->promptTokens ?? 0,
-                    'completion_tokens' => $response->usage->completionTokens ?? 0,
+                    'prompt_tokens' => $responseData['usage']['prompt_tokens'] ?? 0,
+                    'completion_tokens' => $responseData['usage']['completion_tokens'] ?? 0,
                 ],
             ]);
 
@@ -96,6 +119,12 @@ class OpenAIClient
             $result['_format_version'] = self::FORMAT_JSON_SCHEMA;
 
             return $result;
+        } catch (\GuzzleHttp\Exception\GuzzleException $e) {
+            $this->logger->error('[OpenAI Content Audit] API request failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw new \Exception('API request failed: ' . $e->getMessage(), 0, $e);
         } catch (\Exception $e) {
             $this->logger->error('[OpenAI Content Audit] API request failed', [
                 'error' => $e->getMessage(),
@@ -141,31 +170,6 @@ class OpenAIClient
         ];
     }
     
-    /**
-     * Create OpenAI client with configured settings.
-     *
-     * @return Client
-     */
-    private function createClient(): Client
-    {
-        $apiKey = $this->getSetting('api_key');
-        $baseUrl = $this->getSetting('api_endpoint', self::DEFAULT_ENDPOINT);
-        $timeout = (int) $this->getSetting('timeout', self::DEFAULT_TIMEOUT);
-
-        if (empty($apiKey)) {
-            throw new \Exception('OpenAI API key not configured');
-        }
-
-        return \OpenAI::factory()
-            ->withApiKey($apiKey)
-            ->withBaseUri($baseUrl)
-            ->withHttpClient(new \GuzzleHttp\Client([
-                'timeout' => $timeout,
-                'connect_timeout' => 10,
-            ]))
-            ->make();
-    }
-
     /**
      * Build system prompt from settings.
      *
