@@ -33,6 +33,76 @@ class ContentExtractor
     }
 
     /**
+     * Read local image file and convert to base64 data URI.
+     *
+     * @param string $disk Disk name (e.g., 'flarum-avatars', 'sycho-profile-cover')
+     * @param string $path File path on the disk
+     * @return string|null Base64 data URI or null if read fails
+     */
+    private function readLocalImage(string $disk, string $path): ?string
+    {
+        try {
+            $filesystem = resolve(\Illuminate\Contracts\Filesystem\Factory::class);
+            /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
+            $storage = $filesystem->disk($disk);
+            
+            if (!$storage->exists($path)) {
+                $this->logger->warning('[Content Extractor] Local image file not found', [
+                    'disk' => $disk,
+                    'path' => $path,
+                ]);
+                return null;
+            }
+            
+            // Check file size
+            $size = $storage->size($path);
+            if ($size > self::MAX_IMAGE_SIZE) {
+                $this->logger->warning('[Content Extractor] Local image too large', [
+                    'disk' => $disk,
+                    'path' => $path,
+                    'size' => $size,
+                ]);
+                return null;
+            }
+            
+            // Read file content
+            $content = $storage->get($path);
+            
+            // Detect MIME type
+            $mimeType = $storage->mimeType($path);
+            if (!$mimeType || !str_starts_with($mimeType, 'image/')) {
+                // Try to detect from file extension
+                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $mimeType = match($extension) {
+                    'jpg', 'jpeg' => 'image/jpeg',
+                    'png' => 'image/png',
+                    'gif' => 'image/gif',
+                    'webp' => 'image/webp',
+                    default => 'image/jpeg',
+                };
+            }
+            
+            $base64 = base64_encode($content);
+            
+            $this->logger->debug('[Content Extractor] Successfully read local image', [
+                'disk' => $disk,
+                'path' => $path,
+                'size' => $size,
+                'mime_type' => $mimeType,
+            ]);
+            
+            return "data:{$mimeType};base64,{$base64}";
+        } catch (\Exception $e) {
+            $this->logger->error('[Content Extractor] Failed to read local image', [
+                'disk' => $disk,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
      * Extract content from a post for auditing.
      *
      * @param Post $post
@@ -222,49 +292,101 @@ class ContentExtractor
                     $content['bio'] = $this->truncate($value, self::MAX_CONTEXT_LENGTH);
                     break;
                 case 'avatar_url':
-                    $content['avatar_url'] = $value;
-                    // Try to download avatar for vision analysis
-                    if ($this->shouldDownloadImages()) {
-                        $imageData = $this->downloadImage($value);
-                        if ($imageData) {
+                    // Check if this is a local file
+                    if (is_array($value) && isset($value['_local_file']) && $value['_local_file']) {
+                        $content['avatar_url'] = $value['url'] ?? $value['_path'];
+                        // Read local file directly for vision analysis
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->readLocalImage($value['_disk'], $value['_path']);
+                            if ($imageData) {
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                // Fallback to URL if local read fails
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'url' => $value['url'] ?? $value['_path'],
+                                ];
+                            }
+                        } else {
                             $images[] = [
                                 'type' => 'avatar',
-                                'data' => $imageData,
+                                'url' => $value['url'] ?? $value['_path'],
                             ];
+                        }
+                    } else {
+                        // External URL, download as before
+                        $content['avatar_url'] = $value;
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->downloadImage($value);
+                            if ($imageData) {
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'url' => $value,
+                                ];
+                            }
                         } else {
                             $images[] = [
                                 'type' => 'avatar',
                                 'url' => $value,
                             ];
                         }
-                    } else {
-                        $images[] = [
-                            'type' => 'avatar',
-                            'url' => $value,
-                        ];
                     }
                     break;
                 case 'cover':
-                    $content['cover'] = $value;
-                    // Try to download cover image for vision analysis
-                    if ($this->shouldDownloadImages()) {
-                        $imageData = $this->downloadImage($value);
-                        if ($imageData) {
+                    // Check if this is a local file
+                    if (is_array($value) && isset($value['_local_file']) && $value['_local_file']) {
+                        $content['cover'] = $value['url'] ?? $value['_path'];
+                        // Read local file directly for vision analysis
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->readLocalImage($value['_disk'], $value['_path']);
+                            if ($imageData) {
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                // Fallback to URL if local read fails
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'url' => $value['url'] ?? $value['_path'],
+                                ];
+                            }
+                        } else {
                             $images[] = [
                                 'type' => 'cover',
-                                'data' => $imageData,
+                                'url' => $value['url'] ?? $value['_path'],
                             ];
+                        }
+                    } else {
+                        // External URL, download as before
+                        $content['cover'] = $value;
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->downloadImage($value);
+                            if ($imageData) {
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'url' => $value,
+                                ];
+                            }
                         } else {
                             $images[] = [
                                 'type' => 'cover',
                                 'url' => $value,
                             ];
                         }
-                    } else {
-                        $images[] = [
-                            'type' => 'cover',
-                            'url' => $value,
-                        ];
                     }
                     break;
             }
