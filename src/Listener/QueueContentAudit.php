@@ -222,18 +222,24 @@ class QueueContentAudit
             // Re-fetch changed fields and mark local files
             $finalChanges = [];
             foreach (array_keys($changes) as $field) {
-                $value = $user->getAttribute($field);
-                
-                // For cover field, mark as local file if it's not an external URL
-                if ($field === 'cover' && $value && !str_contains($value, '://')) {
-                    $finalChanges[$field] = [
-                        '_local_file' => true,
-                        '_disk' => 'sycho-profile-cover',
-                        '_path' => $value,
-                        'url' => null, // Will generate if needed
-                    ];
+                // For cover field, get raw value to check if it's local
+                if ($field === 'cover') {
+                    $coverPath = $user->getRawOriginal('cover') ?? $user->getAttribute($field);
+                    
+                    if ($coverPath && !str_contains($coverPath, '://')) {
+                        // Local file
+                        $finalChanges[$field] = [
+                            '_local_file' => true,
+                            '_disk' => 'sycho-profile-cover',
+                            '_path' => $coverPath,
+                            'url' => null, // Will generate URL in ContentExtractor if needed
+                        ];
+                    } else {
+                        // External URL
+                        $finalChanges[$field] = $coverPath;
+                    }
                 } else {
-                    $finalChanges[$field] = $value;
+                    $finalChanges[$field] = $user->getAttribute($field);
                 }
             }
             
@@ -325,10 +331,11 @@ class QueueContentAudit
             return;
         }
 
-        $avatarUrl = $user->avatar_url;
+        // Get raw avatar path (not the URL from accessor)
+        $avatarPath = $user->getRawOriginal('avatar_url');
         
-        if (!$avatarUrl) {
-            $this->logger->debug('[Queue Content Audit] Avatar URL is empty, skipping audit', [
+        if (!$avatarPath) {
+            $this->logger->debug('[Queue Content Audit] Avatar path is empty, skipping audit', [
                 'user_id' => $user->id,
             ]);
             return;
@@ -337,21 +344,23 @@ class QueueContentAudit
         $this->logger->info('[Queue Content Audit] Queueing avatar audit', [
             'user_id' => $user->id,
             'actor_id' => $actor->id,
+            'avatar_path' => $avatarPath,
         ]);
 
         // Prepare avatar data for audit
         $changes = [];
         
-        // Check if avatar_url is a local file (no protocol)
-        if (!str_contains($avatarUrl, '://')) {
+        // Check if avatar_path is a local file (no protocol in raw value)
+        if (!str_contains($avatarPath, '://')) {
             $changes['avatar_url'] = [
                 '_local_file' => true,
                 '_disk' => 'flarum-avatars',
-                '_path' => $avatarUrl,
-                'url' => $avatarUrl,
+                '_path' => $avatarPath,
+                'url' => $user->avatar_url, // Use accessor for fallback URL
             ];
         } else {
-            $changes['avatar_url'] = $avatarUrl;
+            // External URL (e.g., from OAuth providers)
+            $changes['avatar_url'] = $avatarPath;
         }
 
         $this->queue->push(new AuditContentJob(

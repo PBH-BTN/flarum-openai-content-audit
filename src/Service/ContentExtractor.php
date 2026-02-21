@@ -295,15 +295,29 @@ class ContentExtractor
                     // Check if this is a local file
                     if (is_array($value) && isset($value['_local_file']) && $value['_local_file']) {
                         $content['avatar_url'] = $value['url'] ?? $value['_path'];
+                        
+                        $this->logger->debug('[Content Extractor] Processing local avatar file', [
+                            'disk' => $value['_disk'],
+                            'path' => $value['_path'],
+                            'download_images' => $this->shouldDownloadImages(),
+                        ]);
+                        
                         // Read local file directly for vision analysis
                         if ($this->shouldDownloadImages()) {
                             $imageData = $this->readLocalImage($value['_disk'], $value['_path']);
                             if ($imageData) {
+                                $this->logger->info('[Content Extractor] Successfully read local avatar file', [
+                                    'path' => $value['_path'],
+                                    'data_size' => strlen($imageData),
+                                ]);
                                 $images[] = [
                                     'type' => 'avatar',
                                     'data' => $imageData,
                                 ];
                             } else {
+                                $this->logger->warning('[Content Extractor] Failed to read local avatar, using URL fallback', [
+                                    'path' => $value['_path'],
+                                ]);
                                 // Fallback to URL if local read fails
                                 $images[] = [
                                     'type' => 'avatar',
@@ -311,6 +325,9 @@ class ContentExtractor
                                 ];
                             }
                         } else {
+                            $this->logger->debug('[Content Extractor] Image download disabled, using URL', [
+                                'url' => $value['url'] ?? $value['_path'],
+                            ]);
                             $images[] = [
                                 'type' => 'avatar',
                                 'url' => $value['url'] ?? $value['_path'],
@@ -430,6 +447,11 @@ class ContentExtractor
             }
         }
         
+        $this->logger->debug('[Content Extractor] Building messages', [
+            'images_count' => count($extractedData['images'] ?? []),
+            'has_image_data' => $hasImageData,
+        ]);
+        
         // Only build multimodal content if we have actual image data
         if ($hasImageData) {
             $content = [
@@ -447,9 +469,14 @@ class ContentExtractor
                     ];
                 }
             }
+            
+            $this->logger->info('[Content Extractor] Using multimodal format', [
+                'content_parts' => count($content),
+            ]);
 
             $messages[] = ['role' => 'user', 'content' => $content];
         } else {
+            $this->logger->info('[Content Extractor] Using text-only format');
             // Text-only message (including image URLs as text)
             $messages[] = ['role' => 'user', 'content' => $userMessage];
         }
