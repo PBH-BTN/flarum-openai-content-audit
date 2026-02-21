@@ -471,22 +471,27 @@ class ContentExtractor
                 
                 if ($isLocal && $file->path) {
                     // Try to read from local filesystem
+                    // fof/upload stores files in 'files/' subdirectory under flarum-assets disk
+                    $localPath = 'files/' . $file->path;
+                    
                     $this->logger->debug('[Content Extractor] Attempting to read local image', [
                         'file_id' => $file->id,
-                        'path' => $file->path,
+                        'original_path' => $file->path,
+                        'local_path' => $localPath,
                     ]);
                     
-                    $imageData = $this->readLocalImage('flarum-assets', $file->path);
+                    $imageData = $this->readLocalImage('flarum-assets', $localPath);
                     if ($imageData) {
                         $imageSource = 'local_file';
                         $this->logger->info('[Content Extractor] Successfully read local uploaded image', [
                             'file_id' => $file->id,
-                            'path' => $file->path,
+                            'path' => $localPath,
                         ]);
                     } else {
                         $this->logger->warning('[Content Extractor] Failed to read local image', [
                             'file_id' => $file->id,
-                            'path' => $file->path,
+                            'original_path' => $file->path,
+                            'local_path' => $localPath,
                         ]);
                     }
                 }
@@ -565,11 +570,14 @@ class ContentExtractor
                 
                 if ($isLocal && $file->path) {
                     // Read from local filesystem
+                    // fof/upload stores files in 'files/' subdirectory under flarum-assets disk
+                    $localPath = 'files/' . $file->path;
+                    
                     /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
                     $storage = $filesystem->disk('flarum-assets');
                     
-                    if ($storage->exists($file->path)) {
-                        $textContent = $storage->get($file->path);
+                    if ($storage->exists($localPath)) {
+                        $textContent = $storage->get($localPath);
                         
                         // Truncate if too large
                         $maxSize = 64 * 1024; // 64KB
@@ -581,13 +589,14 @@ class ContentExtractor
                         
                         $this->logger->info('[Content Extractor] Successfully read local text file', [
                             'file_id' => $file->id,
-                            'path' => $file->path,
+                            'path' => $localPath,
                             'content_length' => strlen($textContent),
                         ]);
                     } else {
                         $this->logger->warning('[Content Extractor] Text file not found', [
                             'file_id' => $file->id,
-                            'path' => $file->path,
+                            'original_path' => $file->path,
+                            'local_path' => $localPath,
                         ]);
                         $content['file_content'] = '[File not found]';
                     }
