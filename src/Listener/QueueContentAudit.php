@@ -46,6 +46,11 @@ class QueueContentAudit
         $events->listen(DiscussionSaving::class, [$this, 'handleDiscussionSaving']);
         $events->listen(UserSaving::class, [$this, 'handleUserSaving']);
         $events->listen(AvatarChanged::class, [$this, 'handleAvatarChanged']);
+        
+        // Also listen for cover upload if sycho/flarum-profile-cover is installed
+        if (class_exists('SychO\\ProfileCover\\Event\\CoverSaving')) {
+            $events->listen('SychO\\ProfileCover\\Event\\CoverSaving', [$this, 'handleCoverSaving']);
+        }
     }
 
     /**
@@ -194,15 +199,13 @@ class QueueContentAudit
         // - avatar_url is handled by handleAvatarChanged() listener
         // - bio requires fof/user-bio extension  
         // - cover requires sycho/flarum-profile-cover extension
-        $auditableFields = ['username', 'display_name'];
+        $auditableFields = ['username', 'display_name', 'bio', 'cover'];
         
-        // Check optional fields from extensions
-        if (isset($user->bio) || array_key_exists('bio', $user->getAttributes())) {
-            $auditableFields[] = 'bio';
-        }
-        if (isset($user->cover) || array_key_exists('cover', $user->getAttributes())) {
-            $auditableFields[] = 'cover';
-        }
+        $this->logger->debug('[Queue Content Audit] Checking user fields for changes', [
+            'user_id' => $user->id,
+            'dirty_attributes' => array_keys($user->getDirty()),
+            'auditable_fields' => $auditableFields,
+        ]);
         
         $changes = [];
 
@@ -210,10 +213,18 @@ class QueueContentAudit
             if ($user->isDirty($field)) {
                 // Get attribute value (will use accessor if defined)
                 $changes[$field] = $user->getAttribute($field);
+                
+                $this->logger->debug('[Queue Content Audit] Field changed', [
+                    'field' => $field,
+                    'value' => is_string($changes[$field]) ? $changes[$field] : gettype($changes[$field]),
+                ]);
             }
         }
 
         if (empty($changes)) {
+            $this->logger->debug('[Queue Content Audit] No profile changes to audit', [
+                'user_id' => $user->id,
+            ]);
             return;
         }
 
@@ -246,6 +257,9 @@ class QueueContentAudit
             $this->logger->info('[Queue Content Audit] Queueing user profile audit', [
                 'user_id' => $user->id,
                 'changed_fields' => array_keys($finalChanges),
+                'final_changes' => array_map(function($v) {
+                    return is_array($v) ? '[local_file]' : (is_string($v) ? substr($v, 0, 50) : gettype($v));
+                }, $finalChanges),
             ]);
 
             $this->queue->push(new AuditContentJob(
@@ -369,6 +383,68 @@ class QueueContentAudit
             $user->id,
             $changes
         ));
+    }
+
+    /**
+     * Handle cover saving event.
+     *
+     * @param \SychO\ProfileCover\Event\CoverSaving $event
+     * @return void
+     */
+    public function handleCoverSaving($event): void
+    {
+        $user = $event->user;
+        $actor = $event->actor;
+
+        // Check if user can bypass audit
+        if ($this->canBypassAudit($actor, 'user_profile')) {
+            $this->logger->debug('[Queue Content Audit] User bypassed cover audit', [
+                'user_id' => $actor->id,
+                'target_user_id' => $user->id,
+            ]);
+            return;
+        }
+
+        // Queue audit after save (cover is set by uploader after this event)
+        $user->afterSave(function ($user) {
+            // Get raw cover path
+            $coverPath = $user->getRawOriginal('cover') ?? $user->getAttribute('cover');
+            
+            if (!$coverPath) {
+                $this->logger->debug('[Queue Content Audit] Cover path is empty, skipping audit', [
+                    'user_id' => $user->id,
+                ]);
+                return;
+            }
+
+            $this->logger->info('[Queue Content Audit] Queueing cover audit', [
+                'user_id' => $user->id,
+                'cover_path' => $coverPath,
+            ]);
+
+            // Prepare cover data for audit
+            $changes = [];
+            
+            // Cover path should be a local file (no protocol in raw value)
+            if (!str_contains($coverPath, '://')) {
+                $changes['cover'] = [
+                    '_local_file' => true,
+                    '_disk' => 'sycho-profile-cover',
+                    '_path' => $coverPath,
+                    'url' => null,
+                ];
+            } else {
+                // External URL (unlikely for cover)
+                $changes['cover'] = $coverPath;
+            }
+
+            $this->queue->push(new AuditContentJob(
+                'user_profile',
+                null,
+                $user->id,
+                $changes
+            ));
+        });
     }
 }
 
