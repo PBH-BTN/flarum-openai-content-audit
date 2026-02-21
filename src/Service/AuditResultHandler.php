@@ -253,14 +253,12 @@ class AuditResultHandler
             $content->is_approved = false;
             $content->save();
 
-            // Create flag for moderation queue
-            $content->afterSave(function ($content) use ($log, &$actionResult) {
-                $flag = $this->flagService->createAuditFlag($content, $log, 'audit');
-                if ($flag) {
-                    $actionResult['flag_created'] = true;
-                    $actionResult['flag_id'] = $flag->id;
-                }
-            });
+            // Create flag for moderation queue (after save, so we have the ID)
+            $flag = $this->flagService->createAuditFlag($content, $log, 'audit');
+            if ($flag) {
+                $actionResult['flag_created'] = true;
+                $actionResult['flag_id'] = $flag->id;
+            }
 
             $actionResult['details'] = 'content_hidden';
             $actionResult['content_type'] = $log->content_type;
@@ -270,6 +268,7 @@ class AuditResultHandler
                 'log_id' => $log->id,
                 'content_type' => $log->content_type,
                 'content_id' => $log->content_id,
+                'flag_created' => $flag ? true : false,
             ]);
         } elseif ($content instanceof User) {
             // For user profile changes, revert to default values
