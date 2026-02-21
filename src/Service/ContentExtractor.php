@@ -450,80 +450,101 @@ class ContentExtractor
             // Handle image files
             $content['file_name'] = $file->base_name;
             
+            $downloadEnabled = $this->shouldDownloadImages();
+            
             $this->logger->debug('[Content Extractor] Processing uploaded image file', [
                 'file_id' => $file->id,
                 'file_name' => $file->base_name,
                 'upload_method' => $file->upload_method,
-                'url' => $file->url,
+                'path' => $file->path ?? 'null',
+                'url' => $file->url ?? 'null',
+                'download_enabled' => $downloadEnabled,
             ]);
 
-            // Determine if we should read locally or download
-            $isLocal = $file->upload_method === 'local';
+            $imageData = null;
+            $imageSource = null;
             
-            if ($isLocal && $file->path) {
-                // Read from local filesystem
-                if ($this->shouldDownloadImages()) {
+            // Try to get image data if downloading is enabled
+            if ($downloadEnabled) {
+                // Determine if we should read locally or download
+                $isLocal = $file->upload_method === 'local';
+                
+                if ($isLocal && $file->path) {
+                    // Try to read from local filesystem
+                    $this->logger->debug('[Content Extractor] Attempting to read local image', [
+                        'file_id' => $file->id,
+                        'path' => $file->path,
+                    ]);
+                    
                     $imageData = $this->readLocalImage('flarum-assets', $file->path);
                     if ($imageData) {
+                        $imageSource = 'local_file';
                         $this->logger->info('[Content Extractor] Successfully read local uploaded image', [
                             'file_id' => $file->id,
                             'path' => $file->path,
                         ]);
-                        $images[] = [
-                            'type' => 'uploaded_file',
-                            'data' => $imageData,
-                        ];
                     } else {
-                        $this->logger->warning('[Content Extractor] Failed to read local image, using URL fallback', [
+                        $this->logger->warning('[Content Extractor] Failed to read local image', [
                             'file_id' => $file->id,
                             'path' => $file->path,
                         ]);
-                        // Fallback to URL
-                        if ($file->url) {
-                            $images[] = [
-                                'type' => 'uploaded_file',
-                                'url' => $file->url,
-                            ];
-                        }
-                    }
-                } else {
-                    $this->logger->debug('[Content Extractor] Image download disabled, using URL', [
-                        'url' => $file->url,
-                    ]);
-                    if ($file->url) {
-                        $images[] = [
-                            'type' => 'uploaded_file',
-                            'url' => $file->url,
-                        ];
                     }
                 }
-            } else {
-                // Download from remote URL (S3, Imgur, etc.)
-                if ($file->url && $this->shouldDownloadImages()) {
+                
+                // If local read failed or file is remote, try downloading from URL
+                if (!$imageData && $file->url) {
+                    $this->logger->debug('[Content Extractor] Attempting to download image from URL', [
+                        'file_id' => $file->id,
+                        'url' => $file->url,
+                    ]);
+                    
                     $imageData = $this->downloadImage($file->url);
                     if ($imageData) {
-                        $this->logger->info('[Content Extractor] Successfully downloaded remote image', [
+                        $imageSource = 'downloaded_url';
+                        $this->logger->info('[Content Extractor] Successfully downloaded image from URL', [
                             'file_id' => $file->id,
                             'url' => $file->url,
                         ]);
-                        $images[] = [
-                            'type' => 'uploaded_file',
-                            'data' => $imageData,
-                        ];
                     } else {
-                        $images[] = [
-                            'type' => 'uploaded_file',
+                        $this->logger->warning('[Content Extractor] Failed to download image from URL', [
+                            'file_id' => $file->id,
                             'url' => $file->url,
-                        ];
-                    }
-                } else {
-                    if ($file->url) {
-                        $images[] = [
-                            'type' => 'uploaded_file',
-                            'url' => $file->url,
-                        ];
+                        ]);
                     }
                 }
+            } else {
+                $this->logger->debug('[Content Extractor] Image download disabled, will use URL reference only', [
+                    'file_id' => $file->id,
+                ]);
+            }
+            
+            // Add image to results
+            if ($imageData) {
+                // Successfully got image data
+                $images[] = [
+                    'type' => 'uploaded_file',
+                    'data' => $imageData,
+                    'source' => $imageSource,
+                ];
+                $this->logger->info('[Content Extractor] Added image with data to audit', [
+                    'file_id' => $file->id,
+                    'source' => $imageSource,
+                ]);
+            } elseif ($file->url) {
+                // Fallback to URL reference (OpenAI may not support this for all endpoints)
+                $images[] = [
+                    'type' => 'uploaded_file',
+                    'url' => $file->url,
+                ];
+                $this->logger->warning('[Content Extractor] Added image URL reference only (no data)', [
+                    'file_id' => $file->id,
+                    'url' => $file->url,
+                    'reason' => $downloadEnabled ? 'download_failed' : 'download_disabled',
+                ]);
+            } else {
+                $this->logger->error('[Content Extractor] Cannot add image: no data and no URL', [
+                    'file_id' => $file->id,
+                ]);
             }
         } elseif ($fileType === 'text') {
             // Handle text files
