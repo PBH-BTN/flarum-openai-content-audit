@@ -1,8 +1,12 @@
 import app from 'flarum/admin/app';
 import ExtensionPage from 'flarum/admin/components/ExtensionPage';
-import Switch from 'flarum/common/components/Switch';
+import Button from 'flarum/common/components/Button';
 
 export default class AuditSettingsPage extends ExtensionPage {
+  oninit(vnode: any) {
+    super.oninit(vnode);
+  }
+
   content() {
     return (
       <div className="OpenAIContentAuditSettingsPage">
@@ -102,30 +106,26 @@ export default class AuditSettingsPage extends ExtensionPage {
             <h3>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.behavior_section')}</h3>
             
             <div className="Form-group">
-              {Switch.component(
-                {
-                  state: this.setting('ghostchu.openaicontentaudit.pre_approve_enabled')() === '1',
-                  onchange: (value: boolean) => {
-                    this.setting('ghostchu.openaicontentaudit.pre_approve_enabled')(value ? '1' : '0');
-                  },
-                },
-                app.translator.trans('ghostchu-openai-content-audit.admin.settings.pre_approve_enabled')
-              )}
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  bidi={this.setting('ghostchu.openaicontentaudit.pre_approve_enabled')}
+                />
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.pre_approve_enabled')}
+              </label>
               <p className="helpText">
                 {app.translator.trans('ghostchu-openai-content-audit.admin.settings.pre_approve_enabled_help')}
               </p>
             </div>
 
             <div className="Form-group">
-              {Switch.component(
-                {
-                  state: this.setting('ghostchu.openaicontentaudit.download_images')() === '1',
-                  onchange: (value: boolean) => {
-                    this.setting('ghostchu.openaicontentaudit.download_images')(value ? '1' : '0');
-                  },
-                },
-                app.translator.trans('ghostchu-openai-content-audit.admin.settings.download_images')
-              )}
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  bidi={this.setting('ghostchu.openaicontentaudit.download_images')}
+                />
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.download_images')}
+              </label>
               <p className="helpText">
                 {app.translator.trans('ghostchu-openai-content-audit.admin.settings.download_images_help')}
               </p>
@@ -151,15 +151,13 @@ export default class AuditSettingsPage extends ExtensionPage {
             <h3>{app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_section')}</h3>
             
             <div className="Form-group">
-              {Switch.component(
-                {
-                  state: this.setting('ghostchu-openai-content-audit.upload_audit_enabled')() === '1',
-                  onchange: (value: boolean) => {
-                    this.setting('ghostchu-openai-content-audit.upload_audit_enabled')(value ? '1' : '0');
-                  },
-                },
-                app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_enabled')
-              )}
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  bidi={this.setting('ghostchu-openai-content-audit.upload_audit_enabled')}
+                />
+                {app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_enabled')}
+              </label>
               <p className="helpText">
                 {app.translator.trans('ghostchu-openai-content-audit.admin.settings.upload_audit_enabled_help')}
               </p>
@@ -227,7 +225,14 @@ export default class AuditSettingsPage extends ExtensionPage {
           </div>
 
           <div className="Form-group">
-            {this.submitButton()}
+            {Button.component(
+              {
+                type: 'submit',
+                className: 'Button Button--primary',
+                loading: this.loading,
+              },
+              app.translator.trans('core.admin.basics.submit_button')
+            )}
           </div>
         </div>
       </div>
