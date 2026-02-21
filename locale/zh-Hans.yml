@@ -1,4 +1,4 @@
-ghostchu-openai-content-audit:
+ghostchu-openaicontentaudit:
   admin:
     settings:
       api_section: API 配置
