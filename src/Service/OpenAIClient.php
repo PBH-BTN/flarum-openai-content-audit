@@ -22,6 +22,9 @@ class OpenAIClient
     private const DEFAULT_TEMPERATURE = 0.3;
     private const DEFAULT_MAX_TOKENS = 4096;
     private const DEFAULT_TIMEOUT = 60;
+    
+    // Response format version for tracking
+    private const FORMAT_JSON_SCHEMA = 'json_schema';
 
     public function __construct(
         private SettingsRepositoryInterface $settings,
@@ -30,10 +33,10 @@ class OpenAIClient
     }
 
     /**
-     * Audit content using OpenAI-compatible API.
+     * Audit content using OpenAI-compatible API with Structured Outputs.
      *
      * @param array $messages Array of message objects with 'role' and 'content'
-     * @return array Parsed JSON response from LLM
+     * @return array Parsed JSON response from LLM with format_version key
      * @throws \Exception If API call fails or response is invalid
      */
     public function auditContent(array $messages): array
@@ -48,6 +51,7 @@ class OpenAIClient
             'model' => $model,
             'temperature' => $temperature,
             'messages_count' => count($messages),
+            'format_version' => self::FORMAT_JSON_SCHEMA,
         ]);
 
         try {
@@ -56,7 +60,10 @@ class OpenAIClient
                 'messages' => $messages,
                 'temperature' => $temperature,
                 'max_tokens' => $maxTokens,
-                'response_format' => ['type' => 'json_object'],
+                'response_format' => [
+                    'type' => 'json_schema',
+                    'json_schema' => $this->getAuditResponseSchema(),
+                ],
             ]);
 
             $content = $response->choices[0]->message->content ?? null;
@@ -67,6 +74,7 @@ class OpenAIClient
 
             $this->logger->debug('[OpenAI Content Audit] Received response', [
                 'finish_reason' => $response->choices[0]->finishReason ?? 'unknown',
+                'format_version' => self::FORMAT_JSON_SCHEMA,
                 'usage' => [
                     'prompt_tokens' => $response->usage->promptTokens ?? 0,
                     'completion_tokens' => $response->usage->completionTokens ?? 0,
@@ -79,10 +87,13 @@ class OpenAIClient
                 throw new \Exception('Invalid JSON response: ' . json_last_error_msg());
             }
 
-            // Validate response structure
+            // Minimal validation - Structured Outputs guarantees schema compliance
             if (!$this->validateResponse($result)) {
                 throw new \Exception('Response missing required fields');
             }
+            
+            // Add format version to result for tracking
+            $result['_format_version'] = self::FORMAT_JSON_SCHEMA;
 
             return $result;
         } catch (\Exception $e) {
@@ -93,7 +104,43 @@ class OpenAIClient
             throw $e;
         }
     }
-
+    
+    /**
+     * Get the JSON Schema for audit response (Structured Outputs).
+     *
+     * @return array
+     */
+    private function getAuditResponseSchema(): array
+    {
+        return [
+            'name' => 'content_audit_response',
+            'strict' => true,
+            'schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'confidence' => [
+                        'type' => 'number',
+                        'description' => 'Confidence level of the violation detection, between 0.0 and 1.0',
+                    ],
+                    'actions' => [
+                        'type' => 'array',
+                        'description' => 'Array of actions to take based on the content analysis',
+                        'items' => [
+                            'type' => 'string',
+                            'enum' => ['hide', 'suspend', 'delete', 'none'],
+                        ],
+                    ],
+                    'conclusion' => [
+                        'type' => 'string',
+                        'description' => 'Brief explanation of the moderation decision (1-2 sentences)',
+                    ],
+                ],
+                'required' => ['confidence', 'actions', 'conclusion'],
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+    
     /**
      * Create OpenAI client with configured settings.
      *
@@ -144,22 +191,24 @@ Analyze the provided content and context carefully. Consider:
 - Spam or promotional content
 - Inappropriate sexual content
 - Violence or threats
-- Personal information disclosure
+- Personal information disclosure (doxxing)
 - Misinformation or harmful content
 
-Respond ONLY with a valid JSON object containing:
-{
-  "confidence": 0.85,
-  "actions": ["hide"],
-  "conclusion": "Brief explanation of your decision"
-}
+For each piece of content, evaluate:
+1. **Confidence**: How certain are you that the content violates policies? (0.0 = no violation, 1.0 = definite violation)
+2. **Actions**: What actions should be taken?
+   - "none": Content is acceptable
+   - "hide": Hide/unapprove the content
+   - "suspend": Temporarily suspend the user
+   - "delete": Permanently delete the content
+3. **Conclusion**: Provide a clear, brief explanation (1-2 sentences) of your decision
 
-Fields:
-- confidence: A decimal between 0.0 and 1.0 indicating violation certainty
-- actions: Array of actions to take. Options: ["hide", "suspend", "none"]
-- conclusion: Brief explanation (1-2 sentences)
-
-Be strict but fair. Err on the side of caution for borderline cases.
+Guidelines:
+- Be strict but fair
+- Err on the side of caution for borderline cases
+- Consider context and intent, not just keywords
+- For images, analyze visual content thoroughly
+- Multiple violations should result in stricter actions
 PROMPT;
     }
 
@@ -175,12 +224,14 @@ PROMPT;
 
     /**
      * Validate API response structure.
+     * Structured Outputs guarantees schema compliance, so this is minimal.
      *
      * @param array $response
      * @return bool
      */
     private function validateResponse(array $response): bool
     {
+        // Basic field presence check - API guarantees types via schema
         return isset($response['confidence'])
             && isset($response['actions'])
             && isset($response['conclusion'])

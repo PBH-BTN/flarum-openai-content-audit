@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property array|null $audited_content
  * @property array|null $api_request
  * @property array|null $api_response
+ * @property string|null $response_format_version
  * @property float|null $confidence
  * @property array|null $actions_taken
  * @property string|null $conclusion
@@ -56,6 +57,7 @@ class AuditLog extends AbstractModel
         'execution_log' => 'array',
         'confidence' => 'decimal:4',
         'retry_count' => 'integer',
+        'response_format_version' => 'string',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -72,6 +74,7 @@ class AuditLog extends AbstractModel
         'audited_content',
         'api_request',
         'api_response',
+        'response_format_version',
         'confidence',
         'actions_taken',
         'conclusion',

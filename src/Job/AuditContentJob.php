@@ -116,6 +116,7 @@ class AuditContentJob extends AbstractJob
 
             // Store API response
             $log->api_response = $response;
+            $log->response_format_version = $response['_format_version'] ?? 'json_object';
             $log->confidence = (float) ($response['confidence'] ?? 0);
             $log->actions_taken = $response['actions'] ?? [];
             $log->conclusion = $response['conclusion'] ?? 'No conclusion provided';

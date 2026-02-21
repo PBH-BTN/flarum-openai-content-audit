@@ -12,7 +12,7 @@
     "license": "MIT",
     "require": {
         "flarum/core": "^2.0",
-        "openai-php/client": "0.10.1"
+        "openai-php/client": "^0.10.5"
     },
     "authors": [
         {
