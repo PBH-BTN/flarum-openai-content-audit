@@ -173,7 +173,14 @@ class OpenAIClient
      */
     public function getSystemPrompt(): string
     {
-        return $this->getSetting('system_prompt', $this->getDefaultSystemPrompt());
+        $prompt = $this->getSetting('system_prompt', $this->getDefaultSystemPrompt());
+        
+        // If prompt is empty string (not null), use default
+        if (empty($prompt)) {
+            return $this->getDefaultSystemPrompt();
+        }
+        
+        return $prompt;
     }
 
     /**
