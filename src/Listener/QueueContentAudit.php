@@ -23,6 +23,8 @@ use Ghostchu\Openaicontentaudit\Service\FlagService;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\Queue;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\Events\File\WasSaved as FileWasSaved;
+use FoF\Upload\File;
 
 class QueueContentAudit
 {
@@ -50,6 +52,11 @@ class QueueContentAudit
         // Also listen for cover upload if sycho/flarum-profile-cover is installed
         if (class_exists('SychO\\ProfileCover\\Event\\CoverSaving')) {
             $events->listen('SychO\\ProfileCover\\Event\\CoverSaving', [$this, 'handleCoverSaving']);
+        }
+
+        // Also listen for file uploads if fof/upload is installed
+        if (class_exists('FoF\\Upload\\Events\\File\\WasSaved')) {
+            $events->listen(FileWasSaved::class, [$this, 'handleFileWasSaved']);
         }
     }
 
@@ -446,5 +453,122 @@ class QueueContentAudit
             ));
         });
     }
-}
 
+    /**
+     * Handle file upload event from fof/upload.
+     *
+     * @param FileWasSaved $event
+     * @return void
+     */
+    public function handleFileWasSaved(FileWasSaved $event): void
+    {
+        $file = $event->file;
+        $actor = $event->actor;
+        $mime = $event->mime;
+
+        // Check if upload audit is enabled
+        if (!$this->settings->get('ghostchu-openaicontentaudit.upload_audit_enabled', false)) {
+            $this->logger->debug('[Queue Content Audit] Upload audit is disabled', [
+                'file_id' => $file->id,
+            ]);
+            return;
+        }
+
+        // Check if user can bypass audit
+        if ($this->canBypassAudit($actor, 'upload')) {
+            $this->logger->debug('[Queue Content Audit] User bypassed upload audit', [
+                'user_id' => $actor->id,
+                'file_id' => $file->id,
+            ]);
+            return;
+        }
+
+        // Check if file is already hidden (might be re-saving)
+        if ($file->hidden) {
+            $this->logger->debug('[Queue Content Audit] File is hidden, skipping audit', [
+                'file_id' => $file->id,
+            ]);
+            return;
+        }
+
+        // Determine if this file type should be audited
+        $shouldAudit = false;
+        $fileType = null;
+
+        // Check if it's an image
+        if (str_starts_with($mime, 'image/')) {
+            $supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'];
+            if (in_array($mime, $supportedImageTypes)) {
+                $maxSize = (int)$this->settings->get('ghostchu-openaicontentaudit.upload_audit_image_max_size', 10) * 1024 * 1024; // Convert MB to bytes
+                if ($file->size <= $maxSize) {
+                    $shouldAudit = true;
+                    $fileType = 'image';
+                } else {
+                    $this->logger->debug('[Queue Content Audit] Image exceeds max size', [
+                        'file_id' => $file->id,
+                        'file_size' => $file->size,
+                        'max_size' => $maxSize,
+                    ]);
+                }
+            } else {
+                $this->logger->debug('[Queue Content Audit] Unsupported image type', [
+                    'file_id' => $file->id,
+                    'mime' => $mime,
+                ]);
+            }
+        }
+        // Check if it's a text file
+        elseif (in_array($mime, [
+            'text/plain',
+            'text/markdown',
+            'text/csv',
+            'application/x-bittorrent',
+        ])) {
+            $maxSize = (int)$this->settings->get('ghostchu-openaicontentaudit.upload_audit_text_max_size', 64) * 1024; // Convert KB to bytes
+            if ($file->size <= $maxSize) {
+                $shouldAudit = true;
+                $fileType = 'text';
+            } else {
+                $this->logger->debug('[Queue Content Audit] Text file exceeds max size', [
+                    'file_id' => $file->id,
+                    'file_size' => $file->size,
+                    'max_size' => $maxSize,
+                ]);
+            }
+        } else {
+            $this->logger->debug('[Queue Content Audit] File type not supported for audit', [
+                'file_id' => $file->id,
+                'mime' => $mime,
+            ]);
+        }
+
+        if (!$shouldAudit) {
+            return;
+        }
+
+        // Queue audit job
+        $this->logger->info('[Queue Content Audit] Queueing file upload audit', [
+            'file_id' => $file->id,
+            'file_name' => $file->base_name,
+            'file_type' => $fileType,
+            'file_size' => $file->size,
+            'mime' => $mime,
+            'user_id' => $actor->id,
+        ]);
+
+        $this->queue->push(new AuditContentJob(
+            'upload',
+            $file->id,
+            $actor->id,
+            [
+                'file_name' => $file->base_name,
+                'file_type' => $fileType,
+                'mime' => $mime,
+                'size' => $file->size,
+                'path' => $file->path,
+                'url' => $file->url,
+                'upload_method' => $file->upload_method,
+            ]
+        ));
+    }
+}

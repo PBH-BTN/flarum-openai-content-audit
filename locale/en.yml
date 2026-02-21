@@ -26,6 +26,14 @@ ghostchu-openai-content-audit:
       suspend_days: Suspension Duration (Days)
       suspend_days_help: How many days to suspend users when "suspend" action is triggered
 
+      upload_audit_section: Upload Audit Settings
+      upload_audit_enabled: Enable Upload File Audit
+      upload_audit_enabled_help: Automatically audit uploaded files (images and text files) from fof/upload extension
+      upload_audit_image_max_size: Image File Max Size (MB)
+      upload_audit_image_max_size_help: Maximum size for image files to be audited. Larger files will be skipped.
+      upload_audit_text_max_size: Text File Max Size (KB)
+      upload_audit_text_max_size_help: Maximum size for text files to be audited. Larger files will be skipped.
+
       defaults_section: Default Values
       default_display_name: Default Display Name
       default_display_name_help: Replacement value for violating display names (leave empty to use username)

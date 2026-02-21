@@ -21,6 +21,7 @@ use Ghostchu\Openaicontentaudit\Service\AuditResultHandler;
 use Ghostchu\Openaicontentaudit\Service\ContentExtractor;
 use Ghostchu\Openaicontentaudit\Service\OpenAIClient;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\File;
 
 class AuditContentJob extends AbstractJob
 {
@@ -158,6 +159,7 @@ class AuditContentJob extends AbstractJob
             'post' => Post::findOrFail($this->contentId),
             'discussion' => Discussion::findOrFail($this->contentId),
             'user_profile', 'avatar', 'username', 'bio' => User::findOrFail($this->userId),
+            'upload' => File::findOrFail($this->contentId),
             default => throw new \Exception("Unknown content type: {$this->contentType}"),
         };
     }
@@ -175,6 +177,7 @@ class AuditContentJob extends AbstractJob
             'post' => $extractor->extractPost($content),
             'discussion' => $extractor->extractDiscussion($content),
             'user_profile', 'avatar', 'username', 'bio' => $extractor->extractUserProfile($content, $this->changes),
+            'upload' => $extractor->extractFile($content, $this->changes),
             default => throw new \Exception("Unknown content type: {$this->contentType}"),
         };
     }

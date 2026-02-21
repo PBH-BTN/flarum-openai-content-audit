@@ -149,6 +149,53 @@ export default class AuditSettingsPage extends ExtensionPage {
           </div>
 
           <div className="OpenAIContentAuditSettingsPage-section">
+            <h3>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_section')}</h3>
+            
+            <div className="Form-group">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  bidi={this.setting('ghostchu-openaicontentaudit.upload_audit_enabled')}
+                />
+                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_enabled')}
+              </label>
+              <p className="helpText">
+                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_enabled_help')}
+              </p>
+            </div>
+
+            <div className="Form-group">
+              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_image_max_size')}</label>
+              <input
+                className="FormControl"
+                type="number"
+                min="1"
+                max="100"
+                bidi={this.setting('ghostchu-openaicontentaudit.upload_audit_image_max_size')}
+                placeholder="10"
+              />
+              <p className="helpText">
+                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_image_max_size_help')}
+              </p>
+            </div>
+
+            <div className="Form-group">
+              <label>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_text_max_size')}</label>
+              <input
+                className="FormControl"
+                type="number"
+                min="1"
+                max="1024"
+                bidi={this.setting('ghostchu-openaicontentaudit.upload_audit_text_max_size')}
+                placeholder="64"
+              />
+              <p className="helpText">
+                {app.translator.trans('ghostchu-openaicontentaudit.admin.settings.upload_audit_text_max_size_help')}
+              </p>
+            </div>
+          </div>
+
+          <div className="OpenAIContentAuditSettingsPage-section">
             <h3>{app.translator.trans('ghostchu-openaicontentaudit.admin.settings.defaults_section')}</h3>
             
             <div className="Form-group">

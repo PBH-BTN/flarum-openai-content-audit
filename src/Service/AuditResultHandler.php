@@ -21,6 +21,7 @@ use Flarum\User\User;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
 use Illuminate\Contracts\Events\Dispatcher;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\File;
 
 class AuditResultHandler
 {
@@ -235,6 +236,24 @@ class AuditResultHandler
                 $executionLog['content_approved'] = false;
                 $executionLog['reason'] = 'already_approved';
             }
+        } elseif ($content instanceof File) {
+            // For files, unhide them if they were hidden
+            if ($content->hidden === true) {
+                $content->hidden = false;
+                $content->save();
+
+                $executionLog['file_approved'] = true;
+                $executionLog['file_id'] = $content->id;
+                $executionLog['file_name'] = $content->base_name;
+
+                $this->logger->info('[Audit Result Handler] File approved after passing audit', [
+                    'file_id' => $content->id,
+                    'file_name' => $content->base_name,
+                ]);
+            } else {
+                $executionLog['file_approved'] = false;
+                $executionLog['reason'] = 'already_visible';
+            }
         }
     }
 
@@ -269,6 +288,20 @@ class AuditResultHandler
                 'content_type' => $log->content_type,
                 'content_id' => $log->content_id,
                 'flag_created' => $flag ? true : false,
+            ]);
+        } elseif ($content instanceof File) {
+            // Hide the uploaded file
+            $content->hidden = true;
+            $content->save();
+
+            $actionResult['details'] = 'file_hidden';
+            $actionResult['file_id'] = $content->id;
+            $actionResult['file_name'] = $content->base_name;
+
+            $this->logger->info('[Audit Result Handler] File hidden', [
+                'log_id' => $log->id,
+                'file_id' => $content->id,
+                'file_name' => $content->base_name,
             ]);
         } elseif ($content instanceof User) {
             // For user profile changes, revert to default values

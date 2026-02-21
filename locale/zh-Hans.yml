@@ -26,6 +26,14 @@ ghostchu-openai-content-audit:
       suspend_days: 封禁时长（天）
       suspend_days_help: 触发"封禁"操作时封禁用户的天数
 
+      upload_audit_section: 文件上传审核设置
+      upload_audit_enabled: 启用文件上传审核
+      upload_audit_enabled_help: 自动审核来自 fof/upload 扩展上传的文件（图片和文本文件）
+      upload_audit_image_max_size: 图片文件最大大小（MB）
+      upload_audit_image_max_size_help: 要审核的图片文件的最大大小。更大的文件将被跳过。
+      upload_audit_text_max_size: 文本文件最大大小（KB）
+      upload_audit_text_max_size_help: 要审核的文本文件的最大大小。更大的文件将被跳过。
+
       defaults_section: 默认值
       default_display_name: 默认显示名称
       default_display_name_help: 违规显示名称的替换值（留空则使用用户名）

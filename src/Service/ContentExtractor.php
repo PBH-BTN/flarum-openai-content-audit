@@ -19,6 +19,7 @@ use Flarum\User\User;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\File;
 
 class ContentExtractor
 {
@@ -415,6 +416,205 @@ class ContentExtractor
 
         return [
             'type' => 'user_profile',
+            'content' => $content,
+            'context' => $context,
+            'images' => $images,
+        ];
+    }
+
+    /**
+     * Extract file content for auditing (from fof/upload).
+     *
+     * @param File $file
+     * @param array $metadata File metadata from event
+     * @return array
+     */
+    public function extractFile(File $file, array $metadata): array
+    {
+        $content = [];
+        $context = [];
+        $images = [];
+
+        $fileType = $metadata['file_type'] ?? 'unknown';
+        $mime = $metadata['mime'] ?? 'unknown';
+        
+        // Add basic file info to context
+        $context['file_id'] = $file->id;
+        $context['file_name'] = $file->base_name;
+        $context['file_size'] = $file->size;
+        $context['mime_type'] = $mime;
+        $context['upload_method'] = $file->upload_method ?? 'unknown';
+        $context['uploaded_at'] = $file->created_at?->toIso8601String();
+
+        if ($fileType === 'image') {
+            // Handle image files
+            $content['file_name'] = $file->base_name;
+            
+            $this->logger->debug('[Content Extractor] Processing uploaded image file', [
+                'file_id' => $file->id,
+                'file_name' => $file->base_name,
+                'upload_method' => $file->upload_method,
+                'url' => $file->url,
+            ]);
+
+            // Determine if we should read locally or download
+            $isLocal = $file->upload_method === 'local';
+            
+            if ($isLocal && $file->path) {
+                // Read from local filesystem
+                if ($this->shouldDownloadImages()) {
+                    $imageData = $this->readLocalImage('flarum-assets', $file->path);
+                    if ($imageData) {
+                        $this->logger->info('[Content Extractor] Successfully read local uploaded image', [
+                            'file_id' => $file->id,
+                            'path' => $file->path,
+                        ]);
+                        $images[] = [
+                            'type' => 'uploaded_file',
+                            'data' => $imageData,
+                        ];
+                    } else {
+                        $this->logger->warning('[Content Extractor] Failed to read local image, using URL fallback', [
+                            'file_id' => $file->id,
+                            'path' => $file->path,
+                        ]);
+                        // Fallback to URL
+                        if ($file->url) {
+                            $images[] = [
+                                'type' => 'uploaded_file',
+                                'url' => $file->url,
+                            ];
+                        }
+                    }
+                } else {
+                    $this->logger->debug('[Content Extractor] Image download disabled, using URL', [
+                        'url' => $file->url,
+                    ]);
+                    if ($file->url) {
+                        $images[] = [
+                            'type' => 'uploaded_file',
+                            'url' => $file->url,
+                        ];
+                    }
+                }
+            } else {
+                // Download from remote URL (S3, Imgur, etc.)
+                if ($file->url && $this->shouldDownloadImages()) {
+                    $imageData = $this->downloadImage($file->url);
+                    if ($imageData) {
+                        $this->logger->info('[Content Extractor] Successfully downloaded remote image', [
+                            'file_id' => $file->id,
+                            'url' => $file->url,
+                        ]);
+                        $images[] = [
+                            'type' => 'uploaded_file',
+                            'data' => $imageData,
+                        ];
+                    } else {
+                        $images[] = [
+                            'type' => 'uploaded_file',
+                            'url' => $file->url,
+                        ];
+                    }
+                } else {
+                    if ($file->url) {
+                        $images[] = [
+                            'type' => 'uploaded_file',
+                            'url' => $file->url,
+                        ];
+                    }
+                }
+            }
+        } elseif ($fileType === 'text') {
+            // Handle text files
+            $content['file_name'] = $file->base_name;
+            
+            $this->logger->debug('[Content Extractor] Processing uploaded text file', [
+                'file_id' => $file->id,
+                'file_name' => $file->base_name,
+                'upload_method' => $file->upload_method,
+                'mime' => $mime,
+            ]);
+
+            // Read text content
+            try {
+                $filesystem = resolve(\Illuminate\Contracts\Filesystem\Factory::class);
+                
+                $isLocal = $file->upload_method === 'local';
+                
+                if ($isLocal && $file->path) {
+                    // Read from local filesystem
+                    /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
+                    $storage = $filesystem->disk('flarum-assets');
+                    
+                    if ($storage->exists($file->path)) {
+                        $textContent = $storage->get($file->path);
+                        
+                        // Truncate if too large
+                        $maxSize = 64 * 1024; // 64KB
+                        if (strlen($textContent) > $maxSize) {
+                            $textContent = substr($textContent, 0, $maxSize) . "\n[... content truncated ...]";
+                        }
+                        
+                        $content['file_content'] = $textContent;
+                        
+                        $this->logger->info('[Content Extractor] Successfully read local text file', [
+                            'file_id' => $file->id,
+                            'path' => $file->path,
+                            'content_length' => strlen($textContent),
+                        ]);
+                    } else {
+                        $this->logger->warning('[Content Extractor] Text file not found', [
+                            'file_id' => $file->id,
+                            'path' => $file->path,
+                        ]);
+                        $content['file_content'] = '[File not found]';
+                    }
+                } elseif ($file->url) {
+                    // Download from remote URL
+                    $this->logger->debug('[Content Extractor] Downloading remote text file', [
+                        'file_id' => $file->id,
+                        'url' => $file->url,
+                    ]);
+                    
+                    $client = new Client([
+                        'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
+                        'connect_timeout' => 5,
+                    ]);
+
+                    $response = $client->get($file->url);
+                    $textContent = (string) $response->getBody();
+                    
+                    // Truncate if too large
+                    $maxSize = 64 * 1024; // 64KB
+                    if (strlen($textContent) > $maxSize) {
+                        $textContent = substr($textContent, 0, $maxSize) . "\n[... content truncated ...]";
+                    }
+                    
+                    $content['file_content'] = $textContent;
+                    
+                    $this->logger->info('[Content Extractor] Successfully downloaded remote text file', [
+                        'file_id' => $file->id,
+                        'url' => $file->url,
+                        'content_length' => strlen($textContent),
+                    ]);
+                } else {
+                    $this->logger->warning('[Content Extractor] Cannot read text file: no path or URL', [
+                        'file_id' => $file->id,
+                    ]);
+                    $content['file_content'] = '[Cannot read file]';
+                }
+            } catch (\Exception $e) {
+                $this->logger->error('[Content Extractor] Failed to read text file', [
+                    'file_id' => $file->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $content['file_content'] = '[Error reading file: ' . $e->getMessage() . ']';
+            }
+        }
+
+        return [
+            'type' => 'upload',
             'content' => $content,
             'context' => $context,
             'images' => $images,
