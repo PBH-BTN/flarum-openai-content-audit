@@ -171,9 +171,7 @@ class MessageNotifier
 **违规原因：**
 {conclusion}
 
-**置信度：** {confidence}
-
-您的内容已被自动处理，如有疑问，请联系管理员。
+您的内容已被自动处理，如有疑问，请联系站点管理员。
 
 感谢您的理解与配合。
 TEXT;

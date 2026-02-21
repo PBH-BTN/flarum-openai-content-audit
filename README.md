@@ -13,6 +13,10 @@ A [Flarum](https://flarum.org) 2.0 extension that automatically moderates user-g
   - Supports HTML tags: `<img>`, `<IMG>`
   - Supports direct image URLs
   - Smart download with URL fallback
+- 👆 **Manual Auditing**: Moderators can manually trigger audits for specific content via context menus
+  - Audit usernames, avatars, covers from user profiles
+  - Audit posts and discussions from post controls
+  - Instant feedback with queue-based processing
 - ⚡ **Asynchronous Processing**: Queue-based system prevents blocking user actions
 - 🎯 **Configurable Actions**: Automatically hide/unapprove content or suspend users based on violations
 - 💬 **User Notifications**: Send private messages to users explaining violations (requires flarum/messages)
@@ -71,12 +75,22 @@ Navigate to **Admin Panel > Extensions > OpenAI Content Audit** to configure:
 
 #### Behavior Settings
 - **Pre-Approval Mode**: Require audit before content becomes visible
-- **Download Images**: Download avatars and cover images for analysis (requires Vision API)
+- **Download Images**: Download avatars, covers, and post images for analysis (requires Vision API)
 - **Suspension Duration**: Days to suspend users (default: 7)
 
 #### Default Values
 - **Default Display Name**: Replacement for violating display names
 - **Default Bio**: Replacement for violating bio content
+
+#### Notification Settings (requires flarum/messages)
+- **Send Violation Notification**: Send private message to users when content is flagged
+- **System User ID**: User account that sends notifications (default: 1 - admin)
+- **Message Template**: Customizable message template with placeholders:
+  - `{content_type}`: Type of content (post, discussion, user_profile)
+  - `{conclusion}`: AI's explanation of the violation
+  - `{confidence}`: Confidence score as percentage
+
+**See [MESSAGE-NOTIFICATION.md](docs/MESSAGE-NOTIFICATION.md) for setup details.**
 
 ### 2. Queue Setup
 

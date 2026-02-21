@@ -24,7 +24,7 @@ class ContentExtractor
 {
     private const MAX_CONTEXT_LENGTH = 5000;
     private const IMAGE_DOWNLOAD_TIMEOUT = 10;
-    private const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+    private const MAX_IMAGE_SIZE = 15 * 1024 * 1024; // 15MB
 
     public function __construct(
         private SettingsRepositoryInterface $settings,
