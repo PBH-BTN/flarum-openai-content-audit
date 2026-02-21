@@ -11,8 +11,8 @@
     "type": "flarum-extension",
     "license": "MIT",
     "require": {
-        "flarum/core": "^2.0",
-        "openai-php/client": "^0.10.5"
+        "flarum/core": "^1.8",
+        "openai-php/client": "^0.10"
     },
     "authors": [
         {
@@ -80,7 +80,7 @@
         "test:setup": "Sets up a database for use with integration tests. Execute this only once."
     },
     "require-dev": {
-        "flarum/testing": "^2.0"
+        "flarum/testing": "^1.8"
     },
     "config": {
         "allow-plugins": {

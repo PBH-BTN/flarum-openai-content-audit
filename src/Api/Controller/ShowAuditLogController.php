@@ -11,7 +11,6 @@
 
 namespace Ghostchu\Openaicontentaudit\Api\Controller;
 
-use Flarum\Http\RequestUtil;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
@@ -22,7 +21,7 @@ class ShowAuditLogController implements RequestHandlerInterface
 {
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        $actor = RequestUtil::getActor($request);
+        $actor = $request->getAttribute('actor');
         
         // Check permission
         $actor->assertCan('ghostchu-openaicontentaudit.viewAuditLogs');

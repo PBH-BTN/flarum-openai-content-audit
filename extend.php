@@ -12,12 +12,10 @@
 namespace Ghostchu\Openaicontentaudit;
 
 use Flarum\Extend;
-use Ghostchu\Openaicontentaudit\Access\AuditLogPolicy;
 use Ghostchu\Openaicontentaudit\Api\Controller\ListAuditLogsController;
 use Ghostchu\Openaicontentaudit\Api\Controller\RetryAuditController;
 use Ghostchu\Openaicontentaudit\Api\Controller\ShowAuditLogController;
 use Ghostchu\Openaicontentaudit\Listener\QueueContentAudit;
-use Ghostchu\Openaicontentaudit\Model\AuditLog;
 use Ghostchu\Openaicontentaudit\Provider\AuditServiceProvider;
 
 return [
@@ -46,10 +44,6 @@ return [
         ->get('/audit-logs', 'audit-logs.index', ListAuditLogsController::class)
         ->get('/audit-logs/{id}', 'audit-logs.show', ShowAuditLogController::class)
         ->post('/audit-logs/{id}/retry', 'audit-logs.retry', RetryAuditController::class),
-
-    // Policies
-    (new Extend\Policy())
-        ->modelPolicy(AuditLog::class, AuditLogPolicy::class),
 
     // Settings with defaults
     (new Extend\Settings())
