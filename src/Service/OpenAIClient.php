@@ -145,11 +145,11 @@ class OpenAIClient
                 'properties' => [
                     'confidence' => [
                         'type' => 'number',
-                        'description' => 'Confidence level of the violation detection, between 0.0 and 1.0',
+                        'description' => '你对此次违规检测结果的置信度，范围 0.0 到 1.0',
                     ],
                     'actions' => [
                         'type' => 'array',
-                        'description' => 'Array of actions to take based on the content analysis',
+                        'description' => '根据内容分析采取的操作的数组',
                         'items' => [
                             'type' => 'string',
                             'enum' => ['hide', 'suspend', 'delete', 'none'],
@@ -157,7 +157,7 @@ class OpenAIClient
                     ],
                     'conclusion' => [
                         'type' => 'string',
-                        'description' => 'Brief explanation of the moderation decision (1-2 sentences)',
+                        'description' => '对审核决策的简要说明，使用简体中文语言，长度 1-2 句',
                     ],
                 ],
                 'required' => ['confidence', 'actions', 'conclusion'],
@@ -175,10 +175,6 @@ class OpenAIClient
     {
         $prompt = $this->getSetting('system_prompt', $this->getDefaultSystemPrompt());
         
-        // If prompt is empty string (not null), use default
-        if (empty($prompt)) {
-            return $this->getDefaultSystemPrompt();
-        }
         
         return $prompt;
     }
