@@ -90,11 +90,23 @@ class QueueContentAudit
 
         // Check if this is a new post or edited post
         $isNew = !$post->exists;
-        $isEdited = $post->exists && $post->isDirty('content');
+        // Check if content is being edited via API (isDirty doesn't work due to Flarum's internal formatting)
+        $isEdited = $post->exists && isset($event->data['attributes']['content']);
 
         if (!$isNew && !$isEdited) {
+            $this->logger->debug('[Queue Content Audit] Post not new or edited, skipping', [
+                'post_id' => $post->id,
+                'is_new' => $isNew,
+                'is_edited' => $isEdited,
+            ]);
             return;
         }
+
+        $this->logger->debug('[Queue Content Audit] Post requires audit', [
+            'post_id' => $post->id,
+            'is_new' => $isNew,
+            'is_edited' => $isEdited,
+        ]);
 
         // Apply pre-approve if enabled
         if ($isNew && $this->isPreApproveEnabled() && !$this->canBypassPreApprove($actor)) {
@@ -148,11 +160,23 @@ class QueueContentAudit
 
         // Check if title changed
         $isNew = !$discussion->exists;
-        $titleChanged = $discussion->exists && $discussion->isDirty('title');
+        // Check if title is being edited via API
+        $titleChanged = $discussion->exists && isset($event->data['attributes']['title']);
 
         if (!$isNew && !$titleChanged) {
+            $this->logger->debug('[Queue Content Audit] Discussion title not new or edited, skipping', [
+                'discussion_id' => $discussion->id,
+                'is_new' => $isNew,
+                'title_changed' => $titleChanged,
+            ]);
             return;
         }
+
+        $this->logger->debug('[Queue Content Audit] Discussion requires audit', [
+            'discussion_id' => $discussion->id,
+            'is_new' => $isNew,
+            'title_changed' => $titleChanged,
+        ]);
 
         // Apply pre-approve if enabled
         if ($isNew && $this->isPreApproveEnabled() && !$this->canBypassPreApprove($actor)) {
@@ -220,13 +244,18 @@ class QueueContentAudit
         $changes = [];
 
         foreach ($auditableFields as $field) {
-            if ($user->isDirty($field)) {
+            // Check both isDirty (for some fields) and API data (more reliable)
+            $isDirty = $user->isDirty($field);
+            $inApiData = isset($event->data['attributes'][$field]);
+            
+            if ($isDirty || $inApiData) {
                 // Get attribute value (will use accessor if defined)
                 $changes[$field] = $user->getAttribute($field);
                 
                 $this->logger->debug('[Queue Content Audit] Field changed', [
                     'field' => $field,
                     'value' => is_string($changes[$field]) ? $changes[$field] : gettype($changes[$field]),
+                    'detected_via' => $isDirty ? 'isDirty' : 'API_data',
                 ]);
             }
         }
@@ -234,6 +263,7 @@ class QueueContentAudit
         if (empty($changes)) {
             $this->logger->debug('[Queue Content Audit] No profile changes to audit', [
                 'user_id' => $user->id,
+                'api_data_keys' => isset($event->data['attributes']) ? array_keys($event->data['attributes']) : [],
             ]);
             return;
         }
