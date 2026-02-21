@@ -509,7 +509,7 @@ class QueueContentAudit
         ]);
 
         // Check if upload audit is enabled
-        if (!$this->settings->get('ghostchu-openaicontentaudit.upload_audit_enabled', false)) {
+        if (!$this->settings->get('ghostchu-openai-content-audit.upload_audit_enabled', false)) {
             $this->logger->debug('[Queue Content Audit] Upload audit is disabled', [
                 'file_id' => $file->id,
             ]);
@@ -541,7 +541,7 @@ class QueueContentAudit
         if (str_starts_with($mime, 'image/')) {
             $supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'];
             if (in_array($mime, $supportedImageTypes)) {
-                $maxSize = (int)$this->settings->get('ghostchu-openaicontentaudit.upload_audit_image_max_size', 10) * 1024 * 1024; // Convert MB to bytes
+                $maxSize = (int)$this->settings->get('ghostchu-openai-content-audit.upload_audit_image_max_size', 10) * 1024 * 1024; // Convert MB to bytes
                 if ($file->size <= $maxSize) {
                     $shouldAudit = true;
                     $fileType = 'image';
@@ -566,7 +566,7 @@ class QueueContentAudit
             'text/csv',
             'application/x-bittorrent',
         ])) {
-            $maxSize = (int)$this->settings->get('ghostchu-openaicontentaudit.upload_audit_text_max_size', 64) * 1024; // Convert KB to bytes
+            $maxSize = (int)$this->settings->get('ghostchu-openai-content-audit.upload_audit_text_max_size', 64) * 1024; // Convert KB to bytes
             if ($file->size <= $maxSize) {
                 $shouldAudit = true;
                 $fileType = 'text';
@@ -586,6 +586,16 @@ class QueueContentAudit
 
         if (!$shouldAudit) {
             return;
+        }
+
+        // Apply pre-approve if enabled
+        if ($this->isPreApproveEnabled() && !$this->canBypassPreApprove($actor)) {
+            $file->hidden = true;
+            $file->save();
+            $this->logger->debug('[Queue Content Audit] Pre-approve: File hidden pending audit', [
+                'file_id' => $file->id,
+                'user_id' => $actor->id,
+            ]);
         }
 
         // Queue audit job

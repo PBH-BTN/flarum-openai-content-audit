@@ -61,8 +61,8 @@ return [
         ->default('ghostchu.openaicontentaudit.default_bio', '')
         ->default('ghostchu.openaicontentaudit.suspend_days', 7)
         ->default('ghostchu.openaicontentaudit.system_user_id', 1)
-        ->default('ghostchu-openaicontentaudit.upload_audit_enabled', false)
-        ->default('ghostchu-openaicontentaudit.upload_audit_image_max_size', 10)
-        ->default('ghostchu-openaicontentaudit.upload_audit_text_max_size', 64)
+        ->default('ghostchu-openai-content-audit.upload_audit_enabled', false)
+        ->default('ghostchu-openai-content-audit.upload_audit_image_max_size', 10)
+        ->default('ghostchu-openai-content-audit.upload_audit_text_max_size', 64)
         ->serializeToForum('ghostchu-openai-content-audit.preApproveEnabled', 'ghostchu.openaicontentaudit.pre_approve_enabled', 'boolval'),
 ];
