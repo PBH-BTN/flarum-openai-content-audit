@@ -46,16 +46,6 @@ ghostchu-openai-content-audit:
       retry_audit: 重试失败的审核
       bypass_audit: 绕过内容审核
       bypass_pre_approve: 绕过先审后放模式
-      manual_audit: 手动触发内容审核
 
   forum:
-    audit_username: 审核用户名
-    audit_avatar: 审核头像
-    audit_cover: 审核封面
-    audit_post: 审核内容
-    confirm_audit_username: 确定要对该用户的用户名进行 AI 审核吗？
-    confirm_audit_avatar: 确定要对该用户的头像进行 AI 审核吗？
-    confirm_audit_cover: 确定要对该用户的封面图进行 AI 审核吗？
-    confirm_audit_post: 确定要对该内容进行 AI 审核吗？
-    audit_queued: AI 审核请求已加入队列
-    audit_failed: 审核请求失败
+    # 论坛端翻译可在此添加

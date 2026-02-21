@@ -14,7 +14,6 @@ namespace Ghostchu\Openaicontentaudit;
 use Flarum\Extend;
 use Ghostchu\Openaicontentaudit\Access\AuditLogPolicy;
 use Ghostchu\Openaicontentaudit\Api\Controller\ListAuditLogsController;
-use Ghostchu\Openaicontentaudit\Api\Controller\ManualAuditController;
 use Ghostchu\Openaicontentaudit\Api\Controller\RetryAuditController;
 use Ghostchu\Openaicontentaudit\Api\Controller\ShowAuditLogController;
 use Ghostchu\Openaicontentaudit\Listener\QueueContentAudit;
@@ -46,21 +45,11 @@ return [
     (new Extend\Routes('api'))
         ->get('/audit-logs', 'audit-logs.index', ListAuditLogsController::class)
         ->get('/audit-logs/{id}', 'audit-logs.show', ShowAuditLogController::class)
-        ->post('/audit-logs/{id}/retry', 'audit-logs.retry', RetryAuditController::class)
-        ->post('/manual-audit', 'manual-audit.create', ManualAuditController::class),
+        ->post('/audit-logs/{id}/retry', 'audit-logs.retry', RetryAuditController::class),
 
     // Policies
     (new Extend\Policy())
         ->modelPolicy(AuditLog::class, AuditLogPolicy::class),
-    
-    // Permissions
-    (new Extend\RegisterPermission())
-        ->add('ghostchu-openai-content-audit.viewAuditLogs', 'moderate')
-        ->add('ghostchu-openai-content-audit.viewFullAuditLogs', 'moderate')
-        ->add('ghostchu-openai-content-audit.retryAudit', 'moderate')
-        ->add('ghostchu-openai-content-audit.bypassAudit', 'moderate')
-        ->add('ghostchu-openai-content-audit.bypassPreApprove', 'moderate')
-        ->add('ghostchu-openai-content-audit.manualAudit', 'moderate'),
 
     // Settings with defaults
     (new Extend\Settings())
@@ -78,8 +67,5 @@ return [
         ->default('ghostchu.openaicontentaudit.default_bio', '')
         ->default('ghostchu.openaicontentaudit.suspend_days', 7)
         ->default('ghostchu.openaicontentaudit.system_user_id', 1)
-        ->serializeToForum('ghostchu-openai-content-audit.preApproveEnabled', 'ghostchu.openaicontentaudit.pre_approve_enabled', 'boolval')
-        ->serializeToForum('canManualAudit', function () {
-            return app('flarum.actor')->hasPermission('ghostchu-openai-content-audit.manualAudit');
-        }),
+        ->serializeToForum('ghostchu-openai-content-audit.preApproveEnabled', 'ghostchu.openaicontentaudit.pre_approve_enabled', 'boolval'),
 ];

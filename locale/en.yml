@@ -46,16 +46,7 @@ ghostchu-openai-content-audit:
       retry_audit: Retry failed audits
       bypass_audit: Bypass content audit
       bypass_pre_approve: Bypass pre-approval mode
-      manual_audit: Manually trigger content audit
 
   forum:
-    audit_username: Audit Username
-    audit_avatar: Audit Avatar
-    audit_cover: Audit Cover
-    audit_post: Audit Content
-    confirm_audit_username: Are you sure you want to audit this user's username with AI?
-    confirm_audit_avatar: Are you sure you want to audit this user's avatar with AI?
-    confirm_audit_cover: Are you sure you want to audit this user's cover image with AI?
-    confirm_audit_post: Are you sure you want to audit this content with AI?
-    audit_queued: AI audit request has been queued
-    audit_failed: Audit request failed
+    # Forum-side translations can be added here if needed
+
