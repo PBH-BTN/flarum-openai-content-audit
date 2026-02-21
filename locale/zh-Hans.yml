@@ -47,5 +47,11 @@ ghostchu-openai-content-audit:
       bypass_audit: 绕过内容审核
       bypass_pre_approve: 绕过先审后放模式
 
+  flags:
+    openai_audit_reason: AI 审核检测到违规
+    openai_audit_pending: 等待 AI 审核完成
+    audit_log: 审核日志
+    confidence: 置信度
+
   forum:
     # 论坛端翻译可在此添加

@@ -47,6 +47,12 @@ ghostchu-openai-content-audit:
       bypass_audit: Bypass content audit
       bypass_pre_approve: Bypass pre-approval mode
 
+  flags:
+    openai_audit_reason: AI audit detected violation
+    openai_audit_pending: Pending AI audit
+    audit_log: Audit Log
+    confidence: Confidence
+
   forum:
     # Forum-side translations can be added here if needed
 

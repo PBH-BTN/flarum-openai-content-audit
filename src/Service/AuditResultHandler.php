@@ -13,6 +13,7 @@ namespace Ghostchu\Openaicontentaudit\Service;
 
 use Carbon\Carbon;
 use Flarum\Discussion\Discussion;
+use Flarum\Flags\Flag;
 use Flarum\Foundation\ValidationException;
 use Flarum\Post\Post;
 use Flarum\Settings\SettingsRepositoryInterface;
@@ -27,7 +28,8 @@ class AuditResultHandler
         private SettingsRepositoryInterface $settings,
         private Dispatcher $events,
         private LoggerInterface $logger,
-        private MessageNotifier $messageNotifier
+        private MessageNotifier $messageNotifier,
+        private FlagService $flagService
     ) {
     }
 
@@ -214,6 +216,12 @@ class AuditResultHandler
                 $content->is_approved = true;
                 $content->save();
 
+                // Remove audit flag when content is approved
+                $deletedFlags = $this->flagService->deleteAuditFlags($content);
+                if ($deletedFlags > 0) {
+                    $executionLog['flags_removed'] = $deletedFlags;
+                }
+
                 $executionLog['content_approved'] = true;
                 $executionLog['content_type'] = $content instanceof Post ? 'post' : 'discussion';
                 $executionLog['content_id'] = $content->id;
@@ -221,6 +229,7 @@ class AuditResultHandler
                 $this->logger->info('[Audit Result Handler] Content approved after passing audit', [
                     'content_type' => $executionLog['content_type'],
                     'content_id' => $content->id,
+                    'flags_removed' => $deletedFlags ?? 0,
                 ]);
             } else {
                 $executionLog['content_approved'] = false;
@@ -243,6 +252,15 @@ class AuditResultHandler
             // Set content as unapproved
             $content->is_approved = false;
             $content->save();
+
+            // Create flag for moderation queue
+            $content->afterSave(function ($content) use ($log, &$actionResult) {
+                $flag = $this->flagService->createAuditFlag($content, $log, 'audit');
+                if ($flag) {
+                    $actionResult['flag_created'] = true;
+                    $actionResult['flag_id'] = $flag->id;
+                }
+            });
 
             $actionResult['details'] = 'content_hidden';
             $actionResult['content_type'] = $log->content_type;

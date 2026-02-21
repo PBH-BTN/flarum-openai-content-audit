@@ -12,12 +12,14 @@
 namespace Ghostchu\Openaicontentaudit\Listener;
 
 use Flarum\Discussion\Event\Saving as DiscussionSaving;
+use Flarum\Flags\Flag;
 use Flarum\Post\Event\Saving as PostSaving;
 use Flarum\Post\CommentPost;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\Event\AvatarSaving;
 use Flarum\User\Event\Saving as UserSaving;
 use Ghostchu\Openaicontentaudit\Job\AuditContentJob;
+use Ghostchu\Openaicontentaudit\Service\FlagService;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\Queue;
 use Psr\Log\LoggerInterface;
@@ -27,7 +29,8 @@ class QueueContentAudit
     public function __construct(
         private Queue $queue,
         private SettingsRepositoryInterface $settings,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private FlagService $flagService
     ) {
     }
 
@@ -90,6 +93,11 @@ class QueueContentAudit
                 'post_id' => $post->id,
                 'user_id' => $actor->id,
             ]);
+
+            // Create flag for pre-approval
+            $post->afterSave(function ($post) {
+                $this->flagService->createAuditFlag($post, null, 'pre-approval');
+            });
         }
 
         // Queue audit after save
@@ -143,6 +151,11 @@ class QueueContentAudit
                 'discussion_id' => $discussion->id,
                 'user_id' => $actor->id,
             ]);
+
+            // Create flag for pre-approval
+            $discussion->afterSave(function ($discussion) {
+                $this->flagService->createAuditFlag($discussion, null, 'pre-approval');
+            });
         }
 
         // Queue audit after save
