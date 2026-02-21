@@ -32,11 +32,11 @@ class AuditContentJob extends AbstractJob
     public $tries = 3;
 
     /**
-     * Backoff time in seconds between retries.
+     * Number of seconds to wait before retrying the job.
      *
-     * @var array
+     * @var int
      */
-    public $backoff = [60, 300, 900]; // 1min, 5min, 15min
+    public $backoff = 60;
 
     /**
      * @param string $contentType Type of content (post, discussion, user_profile, avatar)
