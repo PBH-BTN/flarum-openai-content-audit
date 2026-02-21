@@ -56,7 +56,10 @@ class QueueContentAudit
 
         // Also listen for file uploads if fof/upload is installed
         if (class_exists('FoF\\Upload\\Events\\File\\WasSaved')) {
+            $this->logger->info('[Queue Content Audit] Registering file upload listener');
             $events->listen(FileWasSaved::class, [$this, 'handleFileWasSaved']);
+        } else {
+            $this->logger->warning('[Queue Content Audit] fof/upload not detected, file upload audit disabled');
         }
     }
 
@@ -465,6 +468,15 @@ class QueueContentAudit
         $file = $event->file;
         $actor = $event->actor;
         $mime = $event->mime;
+
+        // Log that event was triggered
+        $this->logger->info('[Queue Content Audit] File upload event received', [
+            'file_id' => $file->id,
+            'file_name' => $file->base_name,
+            'mime' => $mime,
+            'size' => $file->size,
+            'user_id' => $actor->id,
+        ]);
 
         // Check if upload audit is enabled
         if (!$this->settings->get('ghostchu-openaicontentaudit.upload_audit_enabled', false)) {
