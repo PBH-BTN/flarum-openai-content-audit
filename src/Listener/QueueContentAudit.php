@@ -16,6 +16,7 @@ use Flarum\Flags\Flag;
 use Flarum\Post\Event\Saving as PostSaving;
 use Flarum\Post\CommentPost;
 use Flarum\Settings\SettingsRepositoryInterface;
+use Flarum\User\Event\AvatarChanged;
 use Flarum\User\Event\Saving as UserSaving;
 use Ghostchu\Openaicontentaudit\Job\AuditContentJob;
 use Ghostchu\Openaicontentaudit\Service\FlagService;
@@ -44,6 +45,7 @@ class QueueContentAudit
         $events->listen(PostSaving::class, [$this, 'handlePostSaving']);
         $events->listen(DiscussionSaving::class, [$this, 'handleDiscussionSaving']);
         $events->listen(UserSaving::class, [$this, 'handleUserSaving']);
+        $events->listen(AvatarChanged::class, [$this, 'handleAvatarChanged']);
     }
 
     /**
@@ -188,10 +190,11 @@ class QueueContentAudit
 
         // Check for changed auditable fields
         // Note: Only check fields that may exist
-        // - username, display_name, avatar_url are core fields
+        // - username, display_name are core fields
+        // - avatar_url is handled by handleAvatarChanged() listener
         // - bio requires fof/user-bio extension  
         // - cover requires sycho/flarum-profile-cover extension
-        $auditableFields = ['username', 'display_name', 'avatar_url'];
+        $auditableFields = ['username', 'display_name'];
         
         // Check optional fields from extensions
         if (isset($user->bio) || array_key_exists('bio', $user->getAttributes())) {
@@ -221,17 +224,8 @@ class QueueContentAudit
             foreach (array_keys($changes) as $field) {
                 $value = $user->getAttribute($field);
                 
-                // For avatar_url field, mark as local file if it's not an external URL
-                if ($field === 'avatar_url' && $value && !str_contains($value, '://')) {
-                    $finalChanges[$field] = [
-                        '_local_file' => true,
-                        '_disk' => 'flarum-avatars',
-                        '_path' => $value,
-                        'url' => $value, // Keep URL as fallback
-                    ];
-                } 
                 // For cover field, mark as local file if it's not an external URL
-                elseif ($field === 'cover' && $value && !str_contains($value, '://')) {
+                if ($field === 'cover' && $value && !str_contains($value, '://')) {
                     $finalChanges[$field] = [
                         '_local_file' => true,
                         '_disk' => 'sycho-profile-cover',
@@ -303,13 +297,69 @@ class QueueContentAudit
     }
 
     /**
-     * Note: Avatar and Cover auditing is handled by handleUserSaving() method.
+     * Note: Avatar and Cover auditing is handled by handleAvatarChanged() and handleUserSaving() methods.
      * 
-     * In Flarum 1.8.x, AvatarSaving and CoverSaving events fire BEFORE the actual
-     * file is saved, so avatar_url and cover fields are not yet populated.
+     * In Flarum 1.8.x:
+     * - Avatar changes trigger AvatarChanged event after the file is saved
+     * - Cover changes update the user model and trigger UserSaving event
      * 
-     * By monitoring UserSaving event and checking for changes in avatar_url and cover
-     * fields, we can properly audit these changes after the files are saved.
+     * By monitoring both events, we can properly audit these changes after the files are saved.
      */
+
+    /**
+     * Handle avatar changed event.
+     *
+     * @param AvatarChanged $event
+     * @return void
+     */
+    public function handleAvatarChanged(AvatarChanged $event): void
+    {
+        $user = $event->user;
+        $actor = $event->actor ?? $user;
+
+        // Check if user can bypass audit
+        if ($this->canBypassAudit($actor, 'user_profile')) {
+            $this->logger->debug('[Queue Content Audit] User bypassed avatar audit', [
+                'user_id' => $actor->id,
+            ]);
+            return;
+        }
+
+        $avatarUrl = $user->avatar_url;
+        
+        if (!$avatarUrl) {
+            $this->logger->debug('[Queue Content Audit] Avatar URL is empty, skipping audit', [
+                'user_id' => $user->id,
+            ]);
+            return;
+        }
+
+        $this->logger->info('[Queue Content Audit] Queueing avatar audit', [
+            'user_id' => $user->id,
+            'actor_id' => $actor->id,
+        ]);
+
+        // Prepare avatar data for audit
+        $changes = [];
+        
+        // Check if avatar_url is a local file (no protocol)
+        if (!str_contains($avatarUrl, '://')) {
+            $changes['avatar_url'] = [
+                '_local_file' => true,
+                '_disk' => 'flarum-avatars',
+                '_path' => $avatarUrl,
+                'url' => $avatarUrl,
+            ];
+        } else {
+            $changes['avatar_url'] = $avatarUrl;
+        }
+
+        $this->queue->push(new AuditContentJob(
+            'user_profile',
+            null,
+            $user->id,
+            $changes
+        ));
+    }
 }
 
