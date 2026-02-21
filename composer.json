@@ -81,5 +81,10 @@
     },
     "require-dev": {
         "flarum/testing": "^2.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": false
+        }
     }
 }
