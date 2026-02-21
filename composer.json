@@ -11,7 +11,8 @@
     "type": "flarum-extension",
     "license": "MIT",
     "require": {
-        "flarum/core": "^1.8"
+        "flarum/core": "^1.8",
+        "openai-php/client": "^0.19.0"
     },
     "authors": [
         {

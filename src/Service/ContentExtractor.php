@@ -419,27 +419,30 @@ class ContentExtractor
 
         $userMessage = $this->formatUserMessage($extractedData);
         
-        // Check if there are images
+        // Check if there are images with data (base64)
+        $hasImageData = false;
         if (!empty($extractedData['images'])) {
+            foreach ($extractedData['images'] as $image) {
+                if (isset($image['data'])) {
+                    $hasImageData = true;
+                    break;
+                }
+            }
+        }
+        
+        // Only build multimodal content if we have actual image data
+        if ($hasImageData) {
             $content = [
                 ['type' => 'text', 'text' => $userMessage],
             ];
 
             foreach ($extractedData['images'] as $image) {
                 if (isset($image['data'])) {
-                    // Base64 encoded image
+                    // Base64 encoded image - use multimodal format
                     $content[] = [
                         'type' => 'image_url',
                         'image_url' => [
                             'url' => $image['data'],
-                        ],
-                    ];
-                } elseif (isset($image['url'])) {
-                    // Image URL
-                    $content[] = [
-                        'type' => 'image_url',
-                        'image_url' => [
-                            'url' => $image['url'],
                         ],
                     ];
                 }
@@ -447,6 +450,7 @@ class ContentExtractor
 
             $messages[] = ['role' => 'user', 'content' => $content];
         } else {
+            // Text-only message (including image URLs as text)
             $messages[] = ['role' => 'user', 'content' => $userMessage];
         }
 
