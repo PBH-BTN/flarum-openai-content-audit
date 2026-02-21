@@ -1,5 +1,20 @@
 # OpenAI Content Audit
 
+Vibe coding 产物，支持 Flarum v2.0-beta6+，通过 OpenAI 兼容 API，使用 LLM 进行内容审核。  
+支持审核用户名、昵称、头像、Profile Cover、主题、主题回复、图片 URL。
+
+需要模型支持 JSON 结构化输出 (json_schema) 并支持多模态，需要模型智商在线。推荐豆包 Seed 1.6 系列。
+
+<img width="1283" height="455" alt="44535834fc091e711e6bee24bf3ddc9f" src="https://github.com/user-attachments/assets/a63630f7-1310-419f-bf23-fcf8af669d86" />
+
+<img width="2153" height="1308" alt="image" src="https://github.com/user-attachments/assets/58a51c7d-234a-4ffc-a952-2e8e06b7f028" />
+
+<img width="2125" height="1273" alt="image" src="https://github.com/user-attachments/assets/ebbce823-de27-495d-881a-8bcbee7022b6" />
+
+
+---
+
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) [![Latest Stable Version](https://img.shields.io/packagist/v/ghostchu/openai-content-audit.svg)](https://packagist.org/packages/ghostchu/openai-content-audit) [![Total Downloads](https://img.shields.io/packagist/dt/ghostchu/openai-content-audit.svg)](https://packagist.org/packages/ghostchu/openai-content-audit)
 
 A [Flarum](https://flarum.org) 2.0 extension that automatically moderates user-generated content using OpenAI-compatible LLM APIs. The extension audits posts, discussions, user profiles, avatars, profile covers, and more through an AI model, taking automated actions based on confidence levels.
