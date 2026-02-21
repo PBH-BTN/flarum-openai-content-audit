@@ -54,5 +54,7 @@ ghostchu-openai-content-audit:
     confidence: Confidence
 
   forum:
+    flag:
+      default_reason: Flagged by AI audit system
     # Forum-side translations can be added here if needed
 

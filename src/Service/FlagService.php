@@ -70,11 +70,25 @@ class FlagService
             $flag->user_id = null; // System flag
             $flag->created_at = Carbon::now();
             
-            // Set reason from locale
-            $flag->reason = $this->translator->trans('ghostchu-openai-content-audit.flags.openai_audit_reason');
+            // Set reason from locale with fallback
+            $reason = $this->translator->trans('ghostchu-openai-content-audit.flags.openai_audit_reason');
+            // Fallback if translation key is returned as-is or empty
+            if (empty($reason) || $reason === 'ghostchu-openai-content-audit.flags.openai_audit_reason') {
+                $reason = 'AI 审核检测到违规 / AI audit detected violation';
+            }
+            $flag->reason = $reason;
             
             // Format reason_detail based on stage
-            $flag->reason_detail = $this->formatReasonDetail($stage, $log);
+            $reasonDetail = $this->formatReasonDetail($stage, $log);
+            $flag->reason_detail = $reasonDetail;
+            
+            $this->logger->debug('[Flag Service] Flag data before save', [
+                'post_id' => $post->id,
+                'type' => $flag->type,
+                'reason' => $flag->reason,
+                'reason_detail' => $reasonDetail,
+                'reason_detail_length' => strlen($reasonDetail),
+            ]);
             
             $flag->save();
 
@@ -83,6 +97,7 @@ class FlagService
                 'post_id' => $post->id,
                 'stage' => $stage,
                 'audit_log_id' => $log?->id,
+                'reason_detail_length' => strlen($flag->reason_detail ?? ''),
             ]);
 
             return $flag;
@@ -163,21 +178,48 @@ class FlagService
     {
         if ($stage === 'pre-approval' || !$log) {
             // Pre-approval stage: content is waiting for AI audit
-            return $this->translator->trans('ghostchu-openai-content-audit.flags.openai_audit_pending');
+            $pending = $this->translator->trans('ghostchu-openai-content-audit.flags.openai_audit_pending');
+            // Fallback if translation not found or empty
+            if (empty($pending) || $pending === 'ghostchu-openai-content-audit.flags.openai_audit_pending') {
+                return '等待 AI 审核完成 / Pending AI audit';
+            }
+            return $pending;
         }
 
         // Audit stage: include log ID, conclusion, and confidence
         $conclusion = $log->conclusion ?? 'No conclusion available';
+        if (empty($conclusion)) {
+            $conclusion = 'No conclusion available';
+        }
+        
         $confidence = $log->confidence ?? 0;
         $confidencePercent = number_format($confidence * 100, 1);
 
-        return sprintf(
+        // Get translations with fallbacks
+        $auditLogLabel = $this->translator->trans('ghostchu-openai-content-audit.flags.audit_log');
+        if (empty($auditLogLabel) || $auditLogLabel === 'ghostchu-openai-content-audit.flags.audit_log') {
+            $auditLogLabel = '审核日志';
+        }
+        
+        $confidenceLabel = $this->translator->trans('ghostchu-openai-content-audit.flags.confidence');
+        if (empty($confidenceLabel) || $confidenceLabel === 'ghostchu-openai-content-audit.flags.confidence') {
+            $confidenceLabel = '置信度';
+        }
+
+        $detail = sprintf(
             "[%s #%d] %s\n%s: %s%%",
-            $this->translator->trans('ghostchu-openai-content-audit.flags.audit_log'),
+            $auditLogLabel,
             $log->id,
             $conclusion,
-            $this->translator->trans('ghostchu-openai-content-audit.flags.confidence'),
+            $confidenceLabel,
             $confidencePercent
         );
+        
+        // Extra safety check - ensure we never return empty string
+        if (empty($detail)) {
+            $detail = "AI Audit Log #{$log->id} - Confidence: {$confidencePercent}%";
+        }
+        
+        return $detail;
     }
 }

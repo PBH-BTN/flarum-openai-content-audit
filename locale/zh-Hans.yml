@@ -54,4 +54,6 @@ ghostchu-openai-content-audit:
     confidence: 置信度
 
   forum:
+    flag:
+      default_reason: 由 AI 审核系统标记
     # 论坛端翻译可在此添加
