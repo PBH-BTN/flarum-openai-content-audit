@@ -1,6 +1,12 @@
 import app from 'flarum/forum/app';
 import Notification from 'flarum/forum/components/Notification';
 
+interface ContentViolationData {
+  contentType: string;
+  confidence: string;
+  conclusion: string;
+}
+
 export default class ContentViolationNotification extends Notification {
   icon() {
     return 'fas fa-exclamation-triangle';
@@ -21,7 +27,7 @@ export default class ContentViolationNotification extends Notification {
     const notification = this.attrs.notification;
     
     // Get content from notification attributes
-    const content = notification.attribute('content');
+    const content = notification.content<ContentViolationData>();
     
     if (content) {
       const conclusion = content.conclusion || '';
