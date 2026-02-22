@@ -8,30 +8,43 @@ export default class ContentViolationNotification extends Notification {
 
   href() {
     // Link to forum home page
-    // In the future, this could link to audit log details page
     return app.route('index');
   }
 
   content() {
     return app.translator.trans(
-      'ghostchu-openai-content-audit.forum.notifications.content_violation_text',
-      { user: this.attrs.notification.fromUser() }
+      'ghostchu-openai-content-audit.forum.notifications.content_violation_text'
     );
   }
 
   excerpt() {
     const notification = this.attrs.notification;
-    const subject = notification.subject();
     
-    if (subject && subject.data) {
-      // Try to get conclusion from the subject data
-      const data = subject.data.attributes || subject.data;
-      const conclusion = data.conclusion || '';
+    // Get data from notification content (stored via getData() in Blueprint)
+    const content = notification.content();
+    
+    if (content) {
+      const conclusion = content.conclusion || '';
+      const contentType = content.contentType || '';
+      const confidence = content.confidence ? (content.confidence * 100).toFixed(1) + '%' : '';
+      
+      // Build excerpt text
+      let excerptText = '';
+      if (contentType) {
+        const typeKey = 'ghostchu-openai-content-audit.email.content_type.' + contentType;
+        excerptText += app.translator.trans(typeKey, {}, contentType) + ': ';
+      }
+      if (conclusion) {
+        excerptText += conclusion;
+      }
+      if (confidence) {
+        excerptText += ' (' + confidence + ')';
+      }
       
       // Truncate to a reasonable length
-      return conclusion.length > 200 
-        ? conclusion.substring(0, 200) + '...' 
-        : conclusion;
+      return excerptText.length > 200 
+        ? excerptText.substring(0, 200) + '...' 
+        : excerptText;
     }
     
     return '';
