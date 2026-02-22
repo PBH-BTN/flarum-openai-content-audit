@@ -280,6 +280,13 @@ class ContentExtractor
         $context = [];
         $images = [];
 
+        $this->logger->debug('[Content Extractor] extractUserProfile called', [
+            'user_id' => $user->id,
+            'changes' => array_map(function($v) {
+                return is_string($v) ? $v : (is_array($v) ? '[array]' : gettype($v));
+            }, $changes),
+        ]);
+
         // Extract changed fields
         foreach ($changes as $field => $value) {
             switch ($field) {
@@ -359,10 +366,9 @@ class ContentExtractor
                     }
                     break;
                 case 'nickname':
-                    // Check if nickname field exists (from flarum/nicknames extension)
-                    if (property_exists($user, 'nickname')) {
-                        $content['nickname'] = $value;
-                    }
+                    // Nickname from flarum/nicknames extension
+                    // Always add to content for auditing (even if null)
+                    $content['nickname'] = $value ?? '';
                     break;
                 case 'cover':
                     // Check if this is a local file
@@ -413,12 +419,27 @@ class ContentExtractor
                         }
                     }
                     break;
+                default:
+                    // Log unhandled fields
+                    $this->logger->warning('[Content Extractor] Unhandled field in extractUserProfile', [
+                        'field' => $field,
+                        'value_type' => gettype($value),
+                    ]);
+                    break;
             }
         }
 
         // Add context
         $context['user_id'] = $user->id;
         $context['joined_at'] = $user->joined_at?->toIso8601String();
+
+        $this->logger->debug('[Content Extractor] extractUserProfile result', [
+            'user_id' => $user->id,
+            'content' => array_map(function($v) {
+                return is_string($v) ? substr($v, 0, 100) : (is_array($v) ? '[array]' : gettype($v));
+            }, $content),
+            'has_images' => !empty($images),
+        ]);
 
         return [
             'type' => 'user_profile',
@@ -729,6 +750,15 @@ class ContentExtractor
     private function formatUserMessage(array $data): string
     {
         $parts = [];
+
+        $this->logger->debug('[Content Extractor] formatUserMessage called', [
+            'type' => $data['type'] ?? 'unknown',
+            'has_content' => !empty($data['content']),
+            'content_keys' => !empty($data['content']) ? array_keys($data['content']) : [],
+            'content_values' => !empty($data['content']) ? array_map(function($v) {
+                return is_string($v) ? substr($v, 0, 50) : gettype($v);
+            }, $data['content']) : [],
+        ]);
 
         $parts[] = "Content Type: {$data['type']}";
         $parts[] = '';

@@ -249,13 +249,19 @@ class QueueContentAudit
             $inApiData = isset($event->data['attributes'][$field]);
             
             if ($isDirty || $inApiData) {
-                // Get attribute value (will use accessor if defined)
-                $changes[$field] = $user->getAttribute($field);
+                // Prefer API data (new value) over getAttribute (which may return old value)
+                if ($inApiData) {
+                    $changes[$field] = $event->data['attributes'][$field];
+                } else {
+                    // Fallback to getAttribute for isDirty fields not in API data
+                    $changes[$field] = $user->getAttribute($field);
+                }
                 
                 $this->logger->debug('[Queue Content Audit] Field changed', [
                     'field' => $field,
                     'value' => is_string($changes[$field]) ? $changes[$field] : gettype($changes[$field]),
-                    'detected_via' => $isDirty ? 'isDirty' : 'API_data',
+                    'detected_via' => $inApiData ? 'API_data' : 'isDirty',
+                    'value_source' => $inApiData ? 'event_data' : 'user_attribute',
                 ]);
             }
         }
@@ -270,12 +276,12 @@ class QueueContentAudit
 
         // Queue audit after save
         $user->afterSave(function ($user) use ($changes) {
-            // Re-fetch changed fields and mark local files
+            // Prepare final changes - use captured values, only re-fetch for special cases
             $finalChanges = [];
-            foreach (array_keys($changes) as $field) {
-                // For cover field, get raw value to check if it's local
+            foreach ($changes as $field => $value) {
+                // For cover field, check if it's a local file
                 if ($field === 'cover') {
-                    $coverPath = $user->getRawOriginal('cover') ?? $user->getAttribute($field);
+                    $coverPath = $value ?? $user->getAttribute($field);
                     
                     if ($coverPath && !str_contains($coverPath, '://')) {
                         // Local file
@@ -290,7 +296,9 @@ class QueueContentAudit
                         $finalChanges[$field] = $coverPath;
                     }
                 } else {
-                    $finalChanges[$field] = $user->getAttribute($field);
+                    // Use the captured value from when the change was detected
+                    // This preserves the actual submitted value before any other listeners modify it
+                    $finalChanges[$field] = $value;
                 }
             }
             
