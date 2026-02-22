@@ -16,6 +16,7 @@ use Flarum\Discussion\Discussion;
 use Flarum\Post\Post;
 use Flarum\Queue\AbstractJob;
 use Flarum\User\User;
+use Ghostchu\Openaicontentaudit\Exception\ContentNotFoundException;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
 use Ghostchu\Openaicontentaudit\Service\AuditResultHandler;
 use Ghostchu\Openaicontentaudit\Service\ContentExtractor;
@@ -131,6 +132,22 @@ class AuditContentJob extends AbstractJob
 
             // Handle the result (will check confidence threshold internally)
             $resultHandler->handleResult($log, $user, $content);
+        } catch (ContentNotFoundException $e) {
+            // Content was deleted after job was queued, mark as failed but don't retry
+            $logger->warning('[Audit Job] Content not found, skipping audit', [
+                'log_id' => $log->id ?? null,
+                'content_type' => $this->contentType,
+                'content_id' => $this->contentId,
+                'user_id' => $this->userId,
+                'error' => $e->getMessage(),
+            ]);
+
+            if (isset($log)) {
+                $log->markAsFailed($e->getMessage());
+            }
+
+            // Don't re-throw - let job complete normally to avoid retry
+            return;
         } catch (\Exception $e) {
             $logger->error('[Audit Job] Audit failed', [
                 'log_id' => $log->id ?? null,
@@ -151,17 +168,32 @@ class AuditContentJob extends AbstractJob
      * Load the content being audited.
      *
      * @return mixed
+     * @throws ContentNotFoundException
      * @throws \Exception
      */
     private function loadContent()
     {
-        return match ($this->contentType) {
-            'post' => Post::findOrFail($this->contentId),
-            'discussion' => Discussion::findOrFail($this->contentId),
-            'user_profile', 'avatar', 'username', 'bio' => User::findOrFail($this->userId),
-            'upload' => File::findOrFail($this->contentId),
+        $model = match ($this->contentType) {
+            'post' => Post::find($this->contentId),
+            'discussion' => Discussion::find($this->contentId),
+            'user_profile', 'avatar', 'username', 'bio' => User::find($this->userId),
+            'upload' => File::find($this->contentId),
             default => throw new \Exception("Unknown content type: {$this->contentType}"),
         };
+
+        // If content not found, throw special exception to skip retry
+        if ($model === null) {
+            $identifier = $this->contentType === 'user_profile' || $this->contentType === 'avatar' 
+                || $this->contentType === 'username' || $this->contentType === 'bio'
+                ? "User#{$this->userId}"
+                : "{$this->contentType}#{$this->contentId}";
+            
+            throw new ContentNotFoundException(
+                "Content {$identifier} not found (possibly deleted)"
+            );
+        }
+
+        return $model;
     }
 
     /**
