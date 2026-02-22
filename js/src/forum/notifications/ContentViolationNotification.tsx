@@ -38,7 +38,11 @@ export default class ContentViolationNotification extends Notification {
       let excerptText = '';
       if (contentType) {
         const typeKey = 'ghostchu-openai-content-audit.email.content_type.' + contentType;
-        excerptText += app.translator.trans(typeKey, {}, contentType) + ': ';
+        const translatedType = app.translator.trans(typeKey);
+        const typeStr = typeof translatedType === 'string' && translatedType !== typeKey 
+          ? translatedType 
+          : contentType;
+        excerptText += typeStr + ': ';
       }
       if (conclusion) {
         excerptText += conclusion;
