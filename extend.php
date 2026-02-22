@@ -76,5 +76,5 @@ return [
 
     // Notification types
     (new Extend\Notification())
-        ->type(ContentViolationBlueprint::class, AuditLogSerializer::class, []),
+        ->type(ContentViolationBlueprint::class, AuditLogSerializer::class, ['alert', 'email']),
 ];
