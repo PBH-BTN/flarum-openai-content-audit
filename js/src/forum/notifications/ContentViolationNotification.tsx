@@ -20,13 +20,13 @@ export default class ContentViolationNotification extends Notification {
   excerpt() {
     const notification = this.attrs.notification;
     
-    // Get data from notification content (stored via getData() in Blueprint)
-    const content = notification.content();
+    // Get content from notification attributes
+    const content = notification.attribute('content');
     
     if (content) {
       const conclusion = content.conclusion || '';
       const contentType = content.contentType || '';
-      const confidence = content.confidence ? (content.confidence * 100).toFixed(1) + '%' : '';
+      const confidence = content.confidence ? (parseFloat(content.confidence) * 100).toFixed(1) + '%' : '';
       
       // Build excerpt text
       let excerptText = '';
