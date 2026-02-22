@@ -20,7 +20,8 @@ use Symfony\Contracts\Translation\TranslatorInterface;
 class ContentViolationBlueprint implements BlueprintInterface, MailableInterface
 {
     public function __construct(
-        public AuditLog $auditLog
+        public AuditLog $auditLog,
+        public ?User $sender = null
     ) {
     }
 
@@ -29,6 +30,9 @@ class ContentViolationBlueprint implements BlueprintInterface, MailableInterface
      */
     public function getSender(): ?User
     {
+        if ($this->sender) {
+            return $this->sender;
+        }
         // Return the system user who performs the audit action
         return User::find($this->auditLog->auditor_id) ?? User::find(1);
     }

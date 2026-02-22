@@ -139,6 +139,7 @@ class AuditResultHandler
 
         // Send violation notification via private message
         if (!empty($executionLog['actions_executed'])) {
+            $systemUser = null;
             try {
                 $systemUser = $this->getSystemUser();
 
@@ -179,7 +180,7 @@ class AuditResultHandler
             // Send Flarum notification
             try {
                 $this->notificationSyncer->sync(
-                    new ContentViolationBlueprint($log),
+                    new ContentViolationBlueprint($log, $systemUser),
                     [$user]
                 );
 
