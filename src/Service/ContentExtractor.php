@@ -358,6 +358,12 @@ class ContentExtractor
                         }
                     }
                     break;
+                case 'nickname':
+                    // Check if nickname field exists (from flarum/nicknames extension)
+                    if (property_exists($user, 'nickname')) {
+                        $content['nickname'] = $value;
+                    }
+                    break;
                 case 'cover':
                     // Check if this is a local file
                     if (is_array($value) && isset($value['_local_file']) && $value['_local_file']) {

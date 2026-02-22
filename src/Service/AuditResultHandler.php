@@ -426,7 +426,47 @@ class AuditResultHandler
                         'user_id' => $user->id,
                     ]);
                     break;
+                case 'username':
+                    // Generate unique username to replace violating one
+                    try {
+                        $oldUsername = $user->username;
+                        $newUsername = $this->generateUniqueUsername($user);
+                        $revertedFields[$field] = [
+                            'old' => $oldUsername,
+                            'new' => $newUsername,
+                        ];
+                        $user->username = $newUsername;
+                        $changed = true;
+                        $this->logger->info('[Audit Result Handler] Replaced violating username', [
+                            'log_id' => $log->id,
+                            'user_id' => $user->id,
+                            'old_username' => $oldUsername,
+                            'new_username' => $newUsername,
+                        ]);
+                    } catch (\Exception $e) {
+                        $this->logger->error('[Audit Result Handler] Failed to generate unique username', [
+                            'log_id' => $log->id,
+                            'user_id' => $user->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                    break;
 
+                case 'nickname':
+                    // Remove nickname (from flarum/nicknames extension)
+                    if (property_exists($user, 'nickname') || isset($user->nickname)) {
+                        $revertedFields[$field] = [
+                            'old' => $user->nickname,
+                            'new' => null,
+                        ];
+                        $user->nickname = null;
+                        $changed = true;
+                        $this->logger->info('[Audit Result Handler] Removed violating nickname', [
+                            'log_id' => $log->id,
+                            'user_id' => $user->id,
+                        ]);
+                    }
+                    break;
                 case 'cover':
                     // Remove cover image (from sycho/flarum-profile-cover extension)
                     if (property_exists($user, 'cover') || isset($user->cover)) {
@@ -500,6 +540,36 @@ class AuditResultHandler
     public function shouldTakeAction(float $confidence): bool
     {
         return $confidence >= $this->getConfidenceThreshold();
+    }
+
+    /**
+     * Generate a unique username for replacing violating usernames.
+     *
+     * @param User $user
+     * @return string
+     * @throws \RuntimeException if unable to generate unique username after max attempts
+     */
+    private function generateUniqueUsername(User $user): string
+    {
+        $maxAttempts = 10;
+        
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            // Generate random 5-digit number
+            $random = str_pad((string)random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+            $newUsername = "user_{$user->id}_{$random}";
+            
+            // Check if username already exists
+            if (!User::where('username', $newUsername)->exists()) {
+                return $newUsername;
+            }
+            
+            $this->logger->debug('[Audit Result Handler] Username collision, retrying', [
+                'attempt' => $attempt + 1,
+                'username' => $newUsername,
+            ]);
+        }
+        
+        throw new \RuntimeException("Unable to generate unique username after {$maxAttempts} attempts for user {$user->id}");
     }
 
     /**

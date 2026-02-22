@@ -261,7 +261,6 @@ A [Flarum](https://flarum.org) 2.0 extension that automatically moderates user-g
 ### Optional Extensions
 
 - `fof/user-bio` - For bio field auditing
-- `flarum/nicknames` - For nickname auditing
 - `sycho/flarum-profile-cover` - For profile cover image auditing
 - `flarum/messages` - For sending violation notices via private messages
 

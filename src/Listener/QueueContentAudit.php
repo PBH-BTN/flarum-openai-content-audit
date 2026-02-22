@@ -232,7 +232,8 @@ class QueueContentAudit
         // - avatar_url is handled by handleAvatarChanged() listener
         // - bio requires fof/user-bio extension  
         // - cover requires sycho/flarum-profile-cover extension
-        $auditableFields = ['username', 'display_name', 'bio', 'cover'];
+        // - nickname requires flarum/nicknames extension
+        $auditableFields = ['username', 'display_name', 'bio', 'cover', 'nickname'];
         
         $this->logger->debug('[Queue Content Audit] Checking user fields for changes', [
             'user_id' => $user->id,

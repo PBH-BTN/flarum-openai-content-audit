@@ -39,6 +39,10 @@ ghostchu-openai-content-audit:
       default_display_name_help: 违规显示名称的替换值（留空则使用用户名）
       default_bio: 默认签名
       default_bio_help: 违规签名内容的替换值
+      username_audit_enabled: 启用用户名审核
+      username_audit_enabled_help: 对用户名进行内容审核，检测到违规时自动替换为随机用户名
+      nickname_audit_enabled: 启用昵称审核
+      nickname_audit_enabled_help: 对昵称进行内容审核（需要 flarum/nicknames 扩展），检测到违规时清除昵称
       
       notification_section: 通知设置
       send_message_notification: 发送违规通知私信

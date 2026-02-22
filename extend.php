@@ -59,6 +59,8 @@ return [
         ->default('ghostchu.openaicontentaudit.download_images', true)
         ->default('ghostchu.openaicontentaudit.default_display_name', '')
         ->default('ghostchu.openaicontentaudit.default_bio', '')
+        ->default('ghostchu.openaicontentaudit.username_audit_enabled', true)
+        ->default('ghostchu.openaicontentaudit.nickname_audit_enabled', true)
         ->default('ghostchu.openaicontentaudit.suspend_days', 7)
         ->default('ghostchu.openaicontentaudit.system_user_id', 1)
         ->default('ghostchu-openai-content-audit.upload_audit_enabled', false)

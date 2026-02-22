@@ -39,6 +39,10 @@ ghostchu-openai-content-audit:
       default_display_name_help: Replacement value for violating display names (leave empty to use username)
       default_bio: Default Bio
       default_bio_help: Replacement value for violating bio content
+      username_audit_enabled: Enable Username Audit
+      username_audit_enabled_help: Audit usernames for violations and automatically replace with random username when detected
+      nickname_audit_enabled: Enable Nickname Audit
+      nickname_audit_enabled_help: Audit nicknames for violations (requires flarum/nicknames extension), clears nickname when detected
       
       notification_section: Notification Settings
       send_message_notification: Send violation notification via private message
