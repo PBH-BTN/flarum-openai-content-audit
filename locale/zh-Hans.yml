@@ -68,4 +68,30 @@ ghostchu-openai-content-audit:
   forum:
     flag:
       default_reason: 由 AI 审核系统标记
-    # 论坛端翻译可在此添加
+    settings:
+      notify_content_violation_label: 内容违反社区规范时通知我
+    notifications:
+      content_violation_text: 您的内容可能违反了社区规范
+
+  email:
+    subject:
+      violation: "[审核通知] 您的内容可能违反社区规范"
+    body:
+      contentViolation: |-
+        您好 {recipient_display_name}，
+
+        系统检测到您发布的内容（类型：{content_type}）可能违反了社区规范。
+
+        **违规原因：**
+        {conclusion}
+
+        您的内容已被自动处理，如有疑问，请联系管理员。
+
+        感谢您的理解与配合。
+
+        ---
+        {forum_url}
+    content_type:
+      post: 帖子回复
+      discussion: 讨论主题
+      user_profile: 个人资料

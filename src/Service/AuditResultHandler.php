@@ -15,10 +15,12 @@ use Carbon\Carbon;
 use Flarum\Discussion\Discussion;
 use Flarum\Flags\Flag;
 use Flarum\Foundation\ValidationException;
+use Flarum\Notification\NotificationSyncer;
 use Flarum\Post\Post;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
+use Ghostchu\Openaicontentaudit\Notification\ContentViolationBlueprint;
 use Illuminate\Contracts\Events\Dispatcher;
 use Psr\Log\LoggerInterface;
 use FoF\Upload\File;
@@ -30,7 +32,8 @@ class AuditResultHandler
         private Dispatcher $events,
         private LoggerInterface $logger,
         private MessageNotifier $messageNotifier,
-        private FlagService $flagService
+        private FlagService $flagService,
+        private NotificationSyncer $notificationSyncer
     ) {
     }
 
@@ -167,6 +170,29 @@ class AuditResultHandler
                 $executionLog['message_sent'] = false;
                 $executionLog['message_error'] = $e->getMessage();
                 $this->logger->error('[Audit Result Handler] Failed to send violation notice', [
+                    'log_id' => $log->id,
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // Send Flarum notification
+            try {
+                $this->notificationSyncer->sync(
+                    new ContentViolationBlueprint($log),
+                    [$user]
+                );
+
+                $executionLog['notification_sent'] = true;
+                
+                $this->logger->info('[Audit Result Handler] Flarum notification sent to user', [
+                    'log_id' => $log->id,
+                    'user_id' => $user->id,
+                ]);
+            } catch (\Exception $e) {
+                $executionLog['notification_sent'] = false;
+                $executionLog['notification_error'] = $e->getMessage();
+                $this->logger->error('[Audit Result Handler] Failed to send notification', [
                     'log_id' => $log->id,
                     'user_id' => $user->id,
                     'error' => $e->getMessage(),

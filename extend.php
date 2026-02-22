@@ -15,7 +15,9 @@ use Flarum\Extend;
 use Ghostchu\Openaicontentaudit\Api\Controller\ListAuditLogsController;
 use Ghostchu\Openaicontentaudit\Api\Controller\RetryAuditController;
 use Ghostchu\Openaicontentaudit\Api\Controller\ShowAuditLogController;
+use Ghostchu\Openaicontentaudit\Api\Serializer\AuditLogSerializer;
 use Ghostchu\Openaicontentaudit\Listener\QueueContentAudit;
+use Ghostchu\Openaicontentaudit\Notification\ContentViolationBlueprint;
 use Ghostchu\Openaicontentaudit\Provider\AuditServiceProvider;
 
 return [
@@ -67,4 +69,12 @@ return [
         ->default('ghostchu-openai-content-audit.upload_audit_image_max_size', 10)
         ->default('ghostchu-openai-content-audit.upload_audit_text_max_size', 64)
         ->serializeToForum('ghostchu-openai-content-audit.preApproveEnabled', 'ghostchu.openaicontentaudit.pre_approve_enabled', 'boolval'),
+
+    // View namespace for email templates
+    (new Extend\View())
+        ->namespace('ghostchu-openai-content-audit', __DIR__.'/resources/views'),
+
+    // Notification types
+    (new Extend\Notification())
+        ->type(ContentViolationBlueprint::class, AuditLogSerializer::class, []),
 ];

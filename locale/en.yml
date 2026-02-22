@@ -68,5 +68,31 @@ ghostchu-openai-content-audit:
   forum:
     flag:
       default_reason: Flagged by AI audit system
-    # Forum-side translations can be added here if needed
+    settings:
+      notify_content_violation_label: Notify me when content violates community guidelines
+    notifications:
+      content_violation_text: Your content may have violated community guidelines
+
+  email:
+    subject:
+      violation: "[Audit Notice] Your content may violate community guidelines"
+    body:
+      contentViolation: |-
+        Hello {recipient_display_name},
+
+        Our system has detected that your content (type: {content_type}) may violate community guidelines.
+
+        **Violation Reason:**
+        {conclusion}
+
+        Your content has been automatically processed. If you have any questions, please contact an administrator.
+
+        Thank you for your understanding and cooperation.
+
+        ---
+        {forum_url}
+    content_type:
+      post: Post Reply
+      discussion: Discussion Topic
+      user_profile: User Profile
 
