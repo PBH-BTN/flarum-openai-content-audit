@@ -56,7 +56,6 @@ class QueueContentAudit
 
         // Also listen for file uploads if fof/upload is installed
         if (class_exists('FoF\\Upload\\Events\\File\\WasSaved')) {
-            $this->logger->info('[Queue Content Audit] Registering file upload listener');
             $events->listen(FileWasSaved::class, [$this, 'handleFileWasSaved']);
         } else {
             $this->logger->warning('[Queue Content Audit] fof/upload not detected, file upload audit disabled');
