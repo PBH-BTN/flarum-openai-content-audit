@@ -32,23 +32,24 @@ export default class ContentViolationNotification extends Notification {
     if (content) {
       const conclusion = content.conclusion || '';
       const contentType = content.contentType || '';
-      const confidence = content.confidence ? (parseFloat(content.confidence) * 100).toFixed(1) + '%' : '';
       
       // Build excerpt text
       let excerptText = '';
       if (contentType) {
+        // Try to get translation from email.content_type first, fallback to raw type
         const typeKey = 'ghostchu-openai-content-audit.email.content_type.' + contentType;
         const translatedType = app.translator.trans(typeKey);
+        
+        // Flarum translator returns an array if the key is not found or has components
+        // We check if it's a string and not equal to the key itself
         const typeStr = typeof translatedType === 'string' && translatedType !== typeKey 
           ? translatedType 
-          : contentType;
+          : (Array.isArray(translatedType) && translatedType.length > 0 && typeof translatedType[0] === 'string' && translatedType[0] !== typeKey ? translatedType[0] : contentType);
+          
         excerptText += typeStr + ': ';
       }
       if (conclusion) {
         excerptText += conclusion;
-      }
-      if (confidence) {
-        excerptText += ' (' + confidence + ')';
       }
       
       // Truncate to a reasonable length
