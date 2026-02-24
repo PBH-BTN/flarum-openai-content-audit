@@ -885,10 +885,20 @@ class ContentExtractor
      */
     private function downloadImage(string $url): ?string
     {
+        // 1. SSRF 保护：在发起请求前验证 URL 和解析后的 IP
+        if (!$this->isSafeUrl($url)) {
+            $this->logger->warning('[Content Extractor] Blocked potentially unsafe URL (SSRF protection)', [
+                'url' => $url,
+            ]);
+            return null;
+        }
+
         try {
             $client = new Client([
                 'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
                 'connect_timeout' => 5,
+                // 2. SSRF 保护：禁用重定向，防止攻击者通过外部服务器 302 重定向到内网
+                'allow_redirects' => false, 
             ]);
 
             $response = $client->get($url, [
@@ -896,6 +906,15 @@ class ContentExtractor
                     'User-Agent' => 'Flarum-OpenAI-Content-Audit/1.0',
                 ],
             ]);
+
+            // 检查 HTTP 状态码，因为禁用了重定向，需确保请求成功
+            if ($response->getStatusCode() !== 200) {
+                 $this->logger->warning('[Content Extractor] Invalid status code or redirect attempt', [
+                    'url' => $url,
+                    'status' => $response->getStatusCode()
+                ]);
+                return null;
+            }
 
             $contentLength = $response->getHeader('Content-Length')[0] ?? 0;
             if ($contentLength > self::MAX_IMAGE_SIZE) {
@@ -920,6 +939,7 @@ class ContentExtractor
 
             $base64 = base64_encode($body);
             return "data:{$contentType};base64,{$base64}";
+            
         } catch (GuzzleException $e) {
             $this->logger->warning('[Content Extractor] Failed to download image', [
                 'url' => $url,
@@ -933,5 +953,56 @@ class ContentExtractor
             ]);
             return null;
         }
+    }
+
+    /**
+     * 验证 URL 是否安全，防止 SSRF 攻击
+     *
+     * @param string $url
+     * @return bool
+     */
+    private function isSafeUrl(string $url): bool
+    {
+        // 校验 URL 格式
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        $parsedUrl = parse_url($url);
+
+        // 仅允许 http 和 https 协议，防止 file://, gopher://, dict:// 等协议利用
+        $scheme = strtolower($parsedUrl['scheme'] ?? '');
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return false;
+        }
+
+        $host = $parsedUrl['host'] ?? '';
+        if (!$host) {
+            return false;
+        }
+
+        // DNS 解析，获取主机名对应的所有 IP 记录 (支持 IPv4 和 IPv6)
+        $records = dns_get_record($host, DNS_A + DNS_AAAA);
+        if (empty($records)) {
+            return false;
+        }
+
+        foreach ($records as $record) {
+            $ip = $record['ip'] ?? $record['ipv6'] ?? null;
+            if ($ip) {
+                // 检查 IP 是否属于私有地址 (如 192.168.x.x) 或 保留地址 (如 127.0.0.1)
+                $isValidIp = filter_var(
+                    $ip, 
+                    FILTER_VALIDATE_IP, 
+                    FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+                );
+
+                if (!$isValidIp) {
+                    return false; // 如果解析出任何内网/保留 IP，直接拒绝
+                }
+            }
+        }
+
+        return true;
     }
 }
