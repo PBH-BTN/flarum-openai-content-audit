@@ -633,28 +633,49 @@ class ContentExtractor
                         'file_id' => $file->id,
                         'url' => $file->url,
                     ]);
-                    
-                    $client = new Client([
-                        'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
-                        'connect_timeout' => 5,
-                    ]);
 
-                    $response = $client->get($file->url);
-                    $textContent = (string) $response->getBody();
-                    
-                    // Truncate if too large
-                    $maxSize = 64 * 1024; // 64KB
-                    if (strlen($textContent) > $maxSize) {
-                        $textContent = substr($textContent, 0, $maxSize) . "\n[... content truncated ...]";
+                    // SSRF 保护：校验 URL 安全性并固化 DNS 解析结果，防止 DNS 重绑定（TOCTOU）攻击
+                    $textUrlParsed = parse_url($file->url);
+                    $textHost = $textUrlParsed['host'] ?? '';
+                    $textResolvedIp = $this->resolveToSafeIp($file->url);
+                    if ($textResolvedIp === null) {
+                        $this->logger->warning('[Content Extractor] Blocked unsafe text file URL (SSRF protection)', [
+                            'file_id' => $file->id,
+                            'url' => $file->url,
+                        ]);
+                        $content['file_content'] = '[Blocked: unsafe URL]';
+                    } else {
+                        $client = new Client([
+                            'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
+                            'connect_timeout' => 5,
+                            // SSRF 保护：禁用重定向，防止攻击者通过外部服务器 302 重定向到内网
+                            'allow_redirects' => false,
+                            // SSRF 保护：固化 DNS 解析结果，确保实际连接目标与检查时一致（防 DNS 重绑定）
+                            'curl' => [
+                                CURLOPT_RESOLVE => [
+                                    "{$textHost}:80:{$textResolvedIp}",
+                                    "{$textHost}:443:{$textResolvedIp}",
+                                ],
+                            ],
+                        ]);
+
+                        $response = $client->get($file->url);
+                        $textContent = (string) $response->getBody();
+
+                        // Truncate if too large
+                        $maxSize = 64 * 1024; // 64KB
+                        if (strlen($textContent) > $maxSize) {
+                            $textContent = substr($textContent, 0, $maxSize) . "\n[... content truncated ...]";
+                        }
+
+                        $content['file_content'] = $textContent;
+
+                        $this->logger->info('[Content Extractor] Successfully downloaded remote text file', [
+                            'file_id' => $file->id,
+                            'url' => $file->url,
+                            'content_length' => strlen($textContent),
+                        ]);
                     }
-                    
-                    $content['file_content'] = $textContent;
-                    
-                    $this->logger->info('[Content Extractor] Successfully downloaded remote text file', [
-                        'file_id' => $file->id,
-                        'url' => $file->url,
-                        'content_length' => strlen($textContent),
-                    ]);
                 } else {
                     $this->logger->warning('[Content Extractor] Cannot read text file: no path or URL', [
                         'file_id' => $file->id,
@@ -885,8 +906,11 @@ class ContentExtractor
      */
     private function downloadImage(string $url): ?string
     {
-        // 1. SSRF 保护：在发起请求前验证 URL 和解析后的 IP
-        if (!$this->isSafeUrl($url)) {
+        // SSRF 保护：校验 URL 安全性并固化 DNS 解析结果，防止 DNS 重绑定（TOCTOU）攻击
+        $parsedUrlForSsrf = parse_url($url);
+        $hostForSsrf = $parsedUrlForSsrf['host'] ?? '';
+        $resolvedIp = $this->resolveToSafeIp($url);
+        if ($resolvedIp === null) {
             $this->logger->warning('[Content Extractor] Blocked potentially unsafe URL (SSRF protection)', [
                 'url' => $url,
             ]);
@@ -897,8 +921,15 @@ class ContentExtractor
             $client = new Client([
                 'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
                 'connect_timeout' => 5,
-                // 2. SSRF 保护：禁用重定向，防止攻击者通过外部服务器 302 重定向到内网
-                'allow_redirects' => false, 
+                // SSRF 保护：禁用重定向，防止攻击者通过外部服务器 302 重定向到内网
+                'allow_redirects' => false,
+                // SSRF 保护：固化 DNS 解析结果，确保实际连接目标与检查时一致（防 DNS 重绑定）
+                'curl' => [
+                    CURLOPT_RESOLVE => [
+                        "{$hostForSsrf}:80:{$resolvedIp}",
+                        "{$hostForSsrf}:443:{$resolvedIp}",
+                    ],
+                ],
             ]);
 
             $response = $client->get($url, [
@@ -956,16 +987,19 @@ class ContentExtractor
     }
 
     /**
-     * 验证 URL 是否安全，防止 SSRF 攻击
+     * 验证 URL 是否安全（防止 SSRF 攻击），并返回解析出的第一个安全 IP。
+     *
+     * 返回值同时用于 CURLOPT_RESOLVE 固化连接目标，消除 DNS 重绑定（TOCTOU）攻击窗口：
+     * 检查时与实际请求时使用同一次 DNS 解析结果，攻击者无法在两步之间切换 DNS 响应。
      *
      * @param string $url
-     * @return bool
+     * @return string|null 校验通过时返回已解析的安全 IP；任何校验失败时返回 null
      */
-    private function isSafeUrl(string $url): bool
+    private function resolveToSafeIp(string $url): ?string
     {
         // 校验 URL 格式
         if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            return false;
+            return null;
         }
 
         $parsedUrl = parse_url($url);
@@ -973,36 +1007,51 @@ class ContentExtractor
         // 仅允许 http 和 https 协议，防止 file://, gopher://, dict:// 等协议利用
         $scheme = strtolower($parsedUrl['scheme'] ?? '');
         if (!in_array($scheme, ['http', 'https'], true)) {
-            return false;
+            return null;
         }
 
         $host = $parsedUrl['host'] ?? '';
         if (!$host) {
-            return false;
+            return null;
         }
 
-        // DNS 解析，获取主机名对应的所有 IP 记录 (支持 IPv4 和 IPv6)
+        // 若 host 本身是 IP 字面量，直接校验（无需 DNS 解析）
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            $isSafe = filter_var(
+                $host,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+            );
+            return $isSafe ? $host : null;
+        }
+
+        // DNS 解析，获取主机名对应的所有 IP 记录（IPv4 优先，同时支持 IPv6）
         $records = dns_get_record($host, DNS_A + DNS_AAAA);
         if (empty($records)) {
-            return false;
+            return null;
         }
 
+        $safeIp = null;
         foreach ($records as $record) {
             $ip = $record['ip'] ?? $record['ipv6'] ?? null;
-            if ($ip) {
-                // 检查 IP 是否属于私有地址 (如 192.168.x.x) 或 保留地址 (如 127.0.0.1)
-                $isValidIp = filter_var(
-                    $ip, 
-                    FILTER_VALIDATE_IP, 
-                    FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
-                );
-
-                if (!$isValidIp) {
-                    return false; // 如果解析出任何内网/保留 IP，直接拒绝
-                }
+            if ($ip === null) {
+                continue;
+            }
+            // 检查 IP 是否属于私有地址（如 192.168.x.x）或保留地址（如 127.0.0.1）
+            $isValidIp = filter_var(
+                $ip,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+            );
+            if (!$isValidIp) {
+                return null; // 解析出任何内网/保留 IP，直接拒绝整个请求
+            }
+            // 优先采用 IPv4 地址用于 CURLOPT_RESOLVE（兼容性更好）
+            if ($safeIp === null || isset($record['ip'])) {
+                $safeIp = $ip;
             }
         }
 
-        return true;
+        return $safeIp;
     }
 }
