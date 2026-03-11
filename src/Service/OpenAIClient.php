@@ -42,7 +42,7 @@ class OpenAIClient
     public function auditContent(array $messages): array
     {
         $client = $this->createClient();
-        
+
         $model = $this->getSetting('model', self::DEFAULT_MODEL);
         $temperature = (float) $this->getSetting('temperature', self::DEFAULT_TEMPERATURE);
         $maxTokens = (int) $this->getSetting('max_tokens', self::DEFAULT_MAX_TOKENS);
@@ -67,7 +67,7 @@ class OpenAIClient
             ]);
 
             $content = $response->choices[0]->message->content ?? null;
-            
+
             if (empty($content)) {
                 throw new \Exception('Empty response from OpenAI API');
             }
@@ -82,7 +82,7 @@ class OpenAIClient
             ]);
 
             $result = json_decode($content, true);
-            
+
             if (json_last_error() !== JSON_ERROR_NONE) {
                 throw new \Exception('Invalid JSON response: ' . json_last_error_msg());
             }
@@ -91,7 +91,7 @@ class OpenAIClient
             if (!$this->validateResponse($result)) {
                 throw new \Exception('Response missing required fields');
             }
-            
+
             // Add format version to result for tracking
             $result['_format_version'] = self::FORMAT_JSON_SCHEMA;
 
@@ -103,42 +103,6 @@ class OpenAIClient
             ]);
             throw $e;
         }
-    }
-    
-    /**
-     * Get the JSON Schema for audit response (Structured Outputs).
-     *
-     * @return array
-     */
-    private function getAuditResponseSchema(): array
-    {
-        return [
-            'name' => 'content_audit_response',
-            'strict' => true,
-            'schema' => [
-                'type' => 'object',
-                'properties' => [
-                    'confidence' => [
-                        'type' => 'number',
-                        'description' => 'Confidence level of the violation detection, between 0.0 and 1.0',
-                    ],
-                    'actions' => [
-                        'type' => 'array',
-                        'description' => 'Array of actions to take based on the content analysis',
-                        'items' => [
-                            'type' => 'string',
-                            'enum' => ['hide', 'suspend', 'delete', 'none'],
-                        ],
-                    ],
-                    'conclusion' => [
-                        'type' => 'string',
-                        'description' => 'Brief explanation of the moderation decision (1-2 sentences)',
-                    ],
-                ],
-                'required' => ['confidence', 'actions', 'conclusion'],
-                'additionalProperties' => false,
-            ],
-        ];
     }
     
     /**
@@ -167,13 +131,52 @@ class OpenAIClient
     }
 
     /**
+     * Get the JSON Schema for audit response (Structured Outputs).
+     *
+     * @return array
+     */
+    private function getAuditResponseSchema(): array
+    {
+        return [
+            'name' => 'content_audit_response',
+            'strict' => true,
+            'schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'confidence' => [
+                        'type' => 'number',
+                        'description' => '你对此次违规检测结果的置信度，范围 0.0 到 1.0',
+                    ],
+                    'actions' => [
+                        'type' => 'array',
+                        'description' => '根据内容分析采取的操作的数组',
+                        'items' => [
+                            'type' => 'string',
+                            'enum' => ['hide', 'suspend', 'delete', 'none'],
+                        ],
+                    ],
+                    'conclusion' => [
+                        'type' => 'string',
+                        'description' => '对审核决策的简要说明，使用简体中文语言，长度 1-2 句',
+                    ],
+                ],
+                'required' => ['confidence', 'actions', 'conclusion'],
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+    
+    /**
      * Build system prompt from settings.
      *
      * @return string
      */
     public function getSystemPrompt(): string
     {
-        return $this->getSetting('system_prompt', $this->getDefaultSystemPrompt());
+        $prompt = $this->getSetting('system_prompt', $this->getDefaultSystemPrompt());
+        
+        
+        return $prompt;
     }
 
     /**

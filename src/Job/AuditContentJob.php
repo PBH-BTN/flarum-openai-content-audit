@@ -16,11 +16,13 @@ use Flarum\Discussion\Discussion;
 use Flarum\Post\Post;
 use Flarum\Queue\AbstractJob;
 use Flarum\User\User;
+use Ghostchu\Openaicontentaudit\Exception\ContentNotFoundException;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
 use Ghostchu\Openaicontentaudit\Service\AuditResultHandler;
 use Ghostchu\Openaicontentaudit\Service\ContentExtractor;
 use Ghostchu\Openaicontentaudit\Service\OpenAIClient;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\File;
 
 class AuditContentJob extends AbstractJob
 {
@@ -32,11 +34,11 @@ class AuditContentJob extends AbstractJob
     public $tries = 3;
 
     /**
-     * Backoff time in seconds between retries.
+     * Number of seconds to wait before retrying the job.
      *
-     * @var array
+     * @var int
      */
-    public $backoff = [60, 300, 900]; // 1min, 5min, 15min
+    public $backoff = 60;
 
     /**
      * @param string $contentType Type of content (post, discussion, user_profile, avatar)
@@ -130,6 +132,22 @@ class AuditContentJob extends AbstractJob
 
             // Handle the result (will check confidence threshold internally)
             $resultHandler->handleResult($log, $user, $content);
+        } catch (ContentNotFoundException $e) {
+            // Content was deleted after job was queued, mark as failed but don't retry
+            $logger->warning('[Audit Job] Content not found, skipping audit', [
+                'log_id' => $log->id ?? null,
+                'content_type' => $this->contentType,
+                'content_id' => $this->contentId,
+                'user_id' => $this->userId,
+                'error' => $e->getMessage(),
+            ]);
+
+            if (isset($log)) {
+                $log->markAsFailed($e->getMessage());
+            }
+
+            // Don't re-throw - let job complete normally to avoid retry
+            return;
         } catch (\Exception $e) {
             $logger->error('[Audit Job] Audit failed', [
                 'log_id' => $log->id ?? null,
@@ -150,16 +168,32 @@ class AuditContentJob extends AbstractJob
      * Load the content being audited.
      *
      * @return mixed
+     * @throws ContentNotFoundException
      * @throws \Exception
      */
     private function loadContent()
     {
-        return match ($this->contentType) {
-            'post' => Post::findOrFail($this->contentId),
-            'discussion' => Discussion::findOrFail($this->contentId),
-            'user_profile', 'avatar', 'username', 'bio' => User::findOrFail($this->userId),
+        $model = match ($this->contentType) {
+            'post' => Post::find($this->contentId),
+            'discussion' => Discussion::find($this->contentId),
+            'user_profile', 'avatar', 'username', 'bio' => User::find($this->userId),
+            'upload' => File::find($this->contentId),
             default => throw new \Exception("Unknown content type: {$this->contentType}"),
         };
+
+        // If content not found, throw special exception to skip retry
+        if ($model === null) {
+            $identifier = $this->contentType === 'user_profile' || $this->contentType === 'avatar' 
+                || $this->contentType === 'username' || $this->contentType === 'bio'
+                ? "User#{$this->userId}"
+                : "{$this->contentType}#{$this->contentId}";
+            
+            throw new ContentNotFoundException(
+                "Content {$identifier} not found (possibly deleted)"
+            );
+        }
+
+        return $model;
     }
 
     /**
@@ -175,6 +209,7 @@ class AuditContentJob extends AbstractJob
             'post' => $extractor->extractPost($content),
             'discussion' => $extractor->extractDiscussion($content),
             'user_profile', 'avatar', 'username', 'bio' => $extractor->extractUserProfile($content, $this->changes),
+            'upload' => $extractor->extractFile($content, $this->changes),
             default => throw new \Exception("Unknown content type: {$this->contentType}"),
         };
     }

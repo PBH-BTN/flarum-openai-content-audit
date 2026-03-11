@@ -1,6 +1,6 @@
 # OpenAI Content Audit
 
-Vibe coding 产物，支持 Flarum v2.0-beta6+，通过 OpenAI 兼容 API，使用 LLM 进行内容审核。  
+Vibe coding 产物，支持 Flarum v1.8.x，通过 OpenAI 兼容 API，使用 LLM 进行内容审核。  
 支持审核用户名、昵称、头像、Profile Cover、主题、主题回复、图片 URL。
 
 需要模型支持 JSON 结构化输出 (json_schema) 并支持多模态，需要模型智商在线。推荐豆包 Seed 1.6 系列。
@@ -261,7 +261,6 @@ A [Flarum](https://flarum.org) 2.0 extension that automatically moderates user-g
 ### Optional Extensions
 
 - `fof/user-bio` - For bio field auditing
-- `flarum/nicknames` - For nickname auditing
 - `sycho/flarum-profile-cover` - For profile cover image auditing
 - `flarum/messages` - For sending violation notices via private messages
 

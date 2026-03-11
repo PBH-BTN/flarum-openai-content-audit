@@ -15,12 +15,15 @@ use Carbon\Carbon;
 use Flarum\Discussion\Discussion;
 use Flarum\Flags\Flag;
 use Flarum\Foundation\ValidationException;
+use Flarum\Notification\NotificationSyncer;
 use Flarum\Post\Post;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
+use Ghostchu\Openaicontentaudit\Notification\ContentViolationBlueprint;
 use Illuminate\Contracts\Events\Dispatcher;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\File;
 
 class AuditResultHandler
 {
@@ -29,7 +32,8 @@ class AuditResultHandler
         private Dispatcher $events,
         private LoggerInterface $logger,
         private MessageNotifier $messageNotifier,
-        private FlagService $flagService
+        private FlagService $flagService,
+        private NotificationSyncer $notificationSyncer
     ) {
     }
 
@@ -135,6 +139,7 @@ class AuditResultHandler
 
         // Send violation notification via private message
         if (!empty($executionLog['actions_executed'])) {
+            $systemUser = null;
             try {
                 $systemUser = $this->getSystemUser();
 
@@ -166,6 +171,29 @@ class AuditResultHandler
                 $executionLog['message_sent'] = false;
                 $executionLog['message_error'] = $e->getMessage();
                 $this->logger->error('[Audit Result Handler] Failed to send violation notice', [
+                    'log_id' => $log->id,
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // Send Flarum notification
+            try {
+                $this->notificationSyncer->sync(
+                    new ContentViolationBlueprint($log, $systemUser),
+                    [$user]
+                );
+
+                $executionLog['notification_sent'] = true;
+                
+                $this->logger->info('[Audit Result Handler] Flarum notification sent to user', [
+                    'log_id' => $log->id,
+                    'user_id' => $user->id,
+                ]);
+            } catch (\Exception $e) {
+                $executionLog['notification_sent'] = false;
+                $executionLog['notification_error'] = $e->getMessage();
+                $this->logger->error('[Audit Result Handler] Failed to send notification', [
                     'log_id' => $log->id,
                     'user_id' => $user->id,
                     'error' => $e->getMessage(),
@@ -235,6 +263,24 @@ class AuditResultHandler
                 $executionLog['content_approved'] = false;
                 $executionLog['reason'] = 'already_approved';
             }
+        } elseif ($content instanceof File) {
+            // For files, unhide them if they were hidden
+            if ($content->hidden === true) {
+                $content->hidden = false;
+                $content->save();
+
+                $executionLog['file_approved'] = true;
+                $executionLog['file_id'] = $content->id;
+                $executionLog['file_name'] = $content->base_name;
+
+                $this->logger->info('[Audit Result Handler] File approved after passing audit', [
+                    'file_id' => $content->id,
+                    'file_name' => $content->base_name,
+                ]);
+            } else {
+                $executionLog['file_approved'] = false;
+                $executionLog['reason'] = 'already_visible';
+            }
         }
     }
 
@@ -269,6 +315,20 @@ class AuditResultHandler
                 'content_type' => $log->content_type,
                 'content_id' => $log->content_id,
                 'flag_created' => $flag ? true : false,
+            ]);
+        } elseif ($content instanceof File) {
+            // Hide the uploaded file
+            $content->hidden = true;
+            $content->save();
+
+            $actionResult['details'] = 'file_hidden';
+            $actionResult['file_id'] = $content->id;
+            $actionResult['file_name'] = $content->base_name;
+
+            $this->logger->info('[Audit Result Handler] File hidden', [
+                'log_id' => $log->id,
+                'file_id' => $content->id,
+                'file_name' => $content->base_name,
             ]);
         } elseif ($content instanceof User) {
             // For user profile changes, revert to default values
@@ -393,7 +453,47 @@ class AuditResultHandler
                         'user_id' => $user->id,
                     ]);
                     break;
+                case 'username':
+                    // Generate unique username to replace violating one
+                    try {
+                        $oldUsername = $user->username;
+                        $newUsername = $this->generateUniqueUsername($user);
+                        $revertedFields[$field] = [
+                            'old' => $oldUsername,
+                            'new' => $newUsername,
+                        ];
+                        $user->username = $newUsername;
+                        $changed = true;
+                        $this->logger->info('[Audit Result Handler] Replaced violating username', [
+                            'log_id' => $log->id,
+                            'user_id' => $user->id,
+                            'old_username' => $oldUsername,
+                            'new_username' => $newUsername,
+                        ]);
+                    } catch (\Exception $e) {
+                        $this->logger->error('[Audit Result Handler] Failed to generate unique username', [
+                            'log_id' => $log->id,
+                            'user_id' => $user->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                    break;
 
+                case 'nickname':
+                    // Remove nickname (from flarum/nicknames extension)
+                    if (property_exists($user, 'nickname') || isset($user->nickname)) {
+                        $revertedFields[$field] = [
+                            'old' => $user->nickname,
+                            'new' => null,
+                        ];
+                        $user->nickname = null;
+                        $changed = true;
+                        $this->logger->info('[Audit Result Handler] Removed violating nickname', [
+                            'log_id' => $log->id,
+                            'user_id' => $user->id,
+                        ]);
+                    }
+                    break;
                 case 'cover':
                     // Remove cover image (from sycho/flarum-profile-cover extension)
                     if (property_exists($user, 'cover') || isset($user->cover)) {
@@ -467,6 +567,36 @@ class AuditResultHandler
     public function shouldTakeAction(float $confidence): bool
     {
         return $confidence >= $this->getConfidenceThreshold();
+    }
+
+    /**
+     * Generate a unique username for replacing violating usernames.
+     *
+     * @param User $user
+     * @return string
+     * @throws \RuntimeException if unable to generate unique username after max attempts
+     */
+    private function generateUniqueUsername(User $user): string
+    {
+        $maxAttempts = 10;
+        
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            // Generate random 5-digit number
+            $random = str_pad((string)random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+            $newUsername = "user_{$user->id}_{$random}";
+            
+            // Check if username already exists
+            if (!User::where('username', $newUsername)->exists()) {
+                return $newUsername;
+            }
+            
+            $this->logger->debug('[Audit Result Handler] Username collision, retrying', [
+                'attempt' => $attempt + 1,
+                'username' => $newUsername,
+            ]);
+        }
+        
+        throw new \RuntimeException("Unable to generate unique username after {$maxAttempts} attempts for user {$user->id}");
     }
 
     /**

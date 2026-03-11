@@ -12,12 +12,12 @@
 namespace Ghostchu\Openaicontentaudit;
 
 use Flarum\Extend;
-use Ghostchu\Openaicontentaudit\Access\AuditLogPolicy;
 use Ghostchu\Openaicontentaudit\Api\Controller\ListAuditLogsController;
 use Ghostchu\Openaicontentaudit\Api\Controller\RetryAuditController;
 use Ghostchu\Openaicontentaudit\Api\Controller\ShowAuditLogController;
+use Ghostchu\Openaicontentaudit\Api\Serializer\AuditLogSerializer;
 use Ghostchu\Openaicontentaudit\Listener\QueueContentAudit;
-use Ghostchu\Openaicontentaudit\Model\AuditLog;
+use Ghostchu\Openaicontentaudit\Notification\ContentViolationBlueprint;
 use Ghostchu\Openaicontentaudit\Provider\AuditServiceProvider;
 
 return [
@@ -47,10 +47,6 @@ return [
         ->get('/audit-logs/{id}', 'audit-logs.show', ShowAuditLogController::class)
         ->post('/audit-logs/{id}/retry', 'audit-logs.retry', RetryAuditController::class),
 
-    // Policies
-    (new Extend\Policy())
-        ->modelPolicy(AuditLog::class, AuditLogPolicy::class),
-
     // Settings with defaults
     (new Extend\Settings())
         ->default('ghostchu.openaicontentaudit.api_endpoint', 'https://api.openai.com/v1')
@@ -65,7 +61,20 @@ return [
         ->default('ghostchu.openaicontentaudit.download_images', true)
         ->default('ghostchu.openaicontentaudit.default_display_name', '')
         ->default('ghostchu.openaicontentaudit.default_bio', '')
+        ->default('ghostchu.openaicontentaudit.username_audit_enabled', true)
+        ->default('ghostchu.openaicontentaudit.nickname_audit_enabled', true)
         ->default('ghostchu.openaicontentaudit.suspend_days', 7)
         ->default('ghostchu.openaicontentaudit.system_user_id', 1)
+        ->default('ghostchu-openai-content-audit.upload_audit_enabled', false)
+        ->default('ghostchu-openai-content-audit.upload_audit_image_max_size', 10)
+        ->default('ghostchu-openai-content-audit.upload_audit_text_max_size', 64)
         ->serializeToForum('ghostchu-openai-content-audit.preApproveEnabled', 'ghostchu.openaicontentaudit.pre_approve_enabled', 'boolval'),
+
+    // View namespace for email templates
+    (new Extend\View())
+        ->namespace('ghostchu-openai-content-audit', __DIR__.'/resources/views'),
+
+    // Notification types
+    (new Extend\Notification())
+        ->type(ContentViolationBlueprint::class, AuditLogSerializer::class, ['alert', 'email']),
 ];

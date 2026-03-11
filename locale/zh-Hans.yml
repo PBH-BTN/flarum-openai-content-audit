@@ -26,11 +26,23 @@ ghostchu-openai-content-audit:
       suspend_days: 封禁时长（天）
       suspend_days_help: 触发"封禁"操作时封禁用户的天数
 
+      upload_audit_section: 文件上传审核设置
+      upload_audit_enabled: 启用文件上传审核
+      upload_audit_enabled_help: 自动审核来自 fof/upload 扩展上传的文件（图片和文本文件）
+      upload_audit_image_max_size: 图片文件最大大小（MB）
+      upload_audit_image_max_size_help: 要审核的图片文件的最大大小。更大的文件将被跳过。
+      upload_audit_text_max_size: 文本文件最大大小（KB）
+      upload_audit_text_max_size_help: 要审核的文本文件的最大大小。更大的文件将被跳过。
+
       defaults_section: 默认值
       default_display_name: 默认显示名称
       default_display_name_help: 违规显示名称的替换值（留空则使用用户名）
       default_bio: 默认签名
       default_bio_help: 违规签名内容的替换值
+      username_audit_enabled: 启用用户名审核
+      username_audit_enabled_help: 对用户名进行内容审核，检测到违规时自动替换为随机用户名
+      nickname_audit_enabled: 启用昵称审核
+      nickname_audit_enabled_help: 对昵称进行内容审核（需要 flarum/nicknames 扩展），检测到违规时清除昵称
       
       notification_section: 通知设置
       send_message_notification: 发送违规通知私信
@@ -56,4 +68,30 @@ ghostchu-openai-content-audit:
   forum:
     flag:
       default_reason: 由 AI 审核系统标记
-    # 论坛端翻译可在此添加
+    settings:
+      notify_content_violation_label: 内容违反社区规范时通知我
+    notifications:
+      content_violation_text: 您的内容可能违反了社区规范
+
+  email:
+    subject:
+      violation: "[审核通知] 您的内容可能违反社区规范"
+    body:
+      contentViolation: |-
+        您好 {recipient_display_name}，
+
+        系统检测到您发布的内容（类型：{content_type}）可能违反了社区规范。
+
+        **违规原因：**
+        {conclusion}
+
+        您的内容已被自动处理，如有疑问，请联系管理员。
+
+        感谢您的理解与配合。
+
+        ---
+        {forum_url}
+    content_type:
+      post: 帖子回复
+      discussion: 讨论主题
+      user_profile: 个人资料

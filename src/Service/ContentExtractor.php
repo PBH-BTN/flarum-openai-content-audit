@@ -19,6 +19,7 @@ use Flarum\User\User;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\File;
 
 class ContentExtractor
 {
@@ -30,6 +31,76 @@ class ContentExtractor
         private SettingsRepositoryInterface $settings,
         private LoggerInterface $logger
     ) {
+    }
+
+    /**
+     * Read local image file and convert to base64 data URI.
+     *
+     * @param string $disk Disk name (e.g., 'flarum-avatars', 'sycho-profile-cover')
+     * @param string $path File path on the disk
+     * @return string|null Base64 data URI or null if read fails
+     */
+    private function readLocalImage(string $disk, string $path): ?string
+    {
+        try {
+            $filesystem = resolve(\Illuminate\Contracts\Filesystem\Factory::class);
+            /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
+            $storage = $filesystem->disk($disk);
+            
+            if (!$storage->exists($path)) {
+                $this->logger->warning('[Content Extractor] Local image file not found', [
+                    'disk' => $disk,
+                    'path' => $path,
+                ]);
+                return null;
+            }
+            
+            // Check file size
+            $size = $storage->size($path);
+            if ($size > self::MAX_IMAGE_SIZE) {
+                $this->logger->warning('[Content Extractor] Local image too large', [
+                    'disk' => $disk,
+                    'path' => $path,
+                    'size' => $size,
+                ]);
+                return null;
+            }
+            
+            // Read file content
+            $content = $storage->get($path);
+            
+            // Detect MIME type
+            $mimeType = $storage->mimeType($path);
+            if (!$mimeType || !str_starts_with($mimeType, 'image/')) {
+                // Try to detect from file extension
+                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $mimeType = match($extension) {
+                    'jpg', 'jpeg' => 'image/jpeg',
+                    'png' => 'image/png',
+                    'gif' => 'image/gif',
+                    'webp' => 'image/webp',
+                    default => 'image/jpeg',
+                };
+            }
+            
+            $base64 = base64_encode($content);
+            
+            $this->logger->debug('[Content Extractor] Successfully read local image', [
+                'disk' => $disk,
+                'path' => $path,
+                'size' => $size,
+                'mime_type' => $mimeType,
+            ]);
+            
+            return "data:{$mimeType};base64,{$base64}";
+        } catch (\Exception $e) {
+            $this->logger->error('[Content Extractor] Failed to read local image', [
+                'disk' => $disk,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
     /**
@@ -209,6 +280,13 @@ class ContentExtractor
         $context = [];
         $images = [];
 
+        $this->logger->debug('[Content Extractor] extractUserProfile called', [
+            'user_id' => $user->id,
+            'changes' => array_map(function($v) {
+                return is_string($v) ? $v : (is_array($v) ? '[array]' : gettype($v));
+            }, $changes),
+        ]);
+
         // Extract changed fields
         foreach ($changes as $field => $value) {
             switch ($field) {
@@ -222,50 +300,131 @@ class ContentExtractor
                     $content['bio'] = $this->truncate($value, self::MAX_CONTEXT_LENGTH);
                     break;
                 case 'avatar_url':
-                    $content['avatar_url'] = $value;
-                    // Try to download avatar for vision analysis
-                    if ($this->shouldDownloadImages()) {
-                        $imageData = $this->downloadImage($value);
-                        if ($imageData) {
+                    // Check if this is a local file
+                    if (is_array($value) && isset($value['_local_file']) && $value['_local_file']) {
+                        $content['avatar_url'] = $value['url'] ?? $value['_path'];
+                        
+                        $this->logger->debug('[Content Extractor] Processing local avatar file', [
+                            'disk' => $value['_disk'],
+                            'path' => $value['_path'],
+                            'download_images' => $this->shouldDownloadImages(),
+                        ]);
+                        
+                        // Read local file directly for vision analysis
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->readLocalImage($value['_disk'], $value['_path']);
+                            if ($imageData) {
+                                $this->logger->info('[Content Extractor] Successfully read local avatar file', [
+                                    'path' => $value['_path'],
+                                    'data_size' => strlen($imageData),
+                                ]);
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                $this->logger->warning('[Content Extractor] Failed to read local avatar, using URL fallback', [
+                                    'path' => $value['_path'],
+                                ]);
+                                // Fallback to URL if local read fails
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'url' => $value['url'] ?? $value['_path'],
+                                ];
+                            }
+                        } else {
+                            $this->logger->debug('[Content Extractor] Image download disabled, using URL', [
+                                'url' => $value['url'] ?? $value['_path'],
+                            ]);
                             $images[] = [
                                 'type' => 'avatar',
-                                'data' => $imageData,
+                                'url' => $value['url'] ?? $value['_path'],
                             ];
+                        }
+                    } else {
+                        // External URL, download as before
+                        $content['avatar_url'] = $value;
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->downloadImage($value);
+                            if ($imageData) {
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                $images[] = [
+                                    'type' => 'avatar',
+                                    'url' => $value,
+                                ];
+                            }
                         } else {
                             $images[] = [
                                 'type' => 'avatar',
                                 'url' => $value,
                             ];
                         }
-                    } else {
-                        $images[] = [
-                            'type' => 'avatar',
-                            'url' => $value,
-                        ];
                     }
                     break;
+                case 'nickname':
+                    // Nickname from flarum/nicknames extension
+                    // Always add to content for auditing (even if null)
+                    $content['nickname'] = $value ?? '';
+                    break;
                 case 'cover':
-                    $content['cover'] = $value;
-                    // Try to download cover image for vision analysis
-                    if ($this->shouldDownloadImages()) {
-                        $imageData = $this->downloadImage($value);
-                        if ($imageData) {
+                    // Check if this is a local file
+                    if (is_array($value) && isset($value['_local_file']) && $value['_local_file']) {
+                        $content['cover'] = $value['url'] ?? $value['_path'];
+                        // Read local file directly for vision analysis
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->readLocalImage($value['_disk'], $value['_path']);
+                            if ($imageData) {
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                // Fallback to URL if local read fails
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'url' => $value['url'] ?? $value['_path'],
+                                ];
+                            }
+                        } else {
                             $images[] = [
                                 'type' => 'cover',
-                                'data' => $imageData,
+                                'url' => $value['url'] ?? $value['_path'],
                             ];
+                        }
+                    } else {
+                        // External URL, download as before
+                        $content['cover'] = $value;
+                        if ($this->shouldDownloadImages()) {
+                            $imageData = $this->downloadImage($value);
+                            if ($imageData) {
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'data' => $imageData,
+                                ];
+                            } else {
+                                $images[] = [
+                                    'type' => 'cover',
+                                    'url' => $value,
+                                ];
+                            }
                         } else {
                             $images[] = [
                                 'type' => 'cover',
                                 'url' => $value,
                             ];
                         }
-                    } else {
-                        $images[] = [
-                            'type' => 'cover',
-                            'url' => $value,
-                        ];
                     }
+                    break;
+                default:
+                    // Log unhandled fields
+                    $this->logger->warning('[Content Extractor] Unhandled field in extractUserProfile', [
+                        'field' => $field,
+                        'value_type' => gettype($value),
+                    ]);
                     break;
             }
         }
@@ -274,8 +433,266 @@ class ContentExtractor
         $context['user_id'] = $user->id;
         $context['joined_at'] = $user->joined_at?->toIso8601String();
 
+        $this->logger->debug('[Content Extractor] extractUserProfile result', [
+            'user_id' => $user->id,
+            'content' => array_map(function($v) {
+                return is_string($v) ? substr($v, 0, 100) : (is_array($v) ? '[array]' : gettype($v));
+            }, $content),
+            'has_images' => !empty($images),
+        ]);
+
         return [
             'type' => 'user_profile',
+            'content' => $content,
+            'context' => $context,
+            'images' => $images,
+        ];
+    }
+
+    /**
+     * Extract file content for auditing (from fof/upload).
+     *
+     * @param File $file
+     * @param array $metadata File metadata from event
+     * @return array
+     */
+    public function extractFile(File $file, array $metadata): array
+    {
+        $content = [];
+        $context = [];
+        $images = [];
+
+        $fileType = $metadata['file_type'] ?? 'unknown';
+        $mime = $metadata['mime'] ?? 'unknown';
+        
+        // Add basic file info to context
+        $context['file_id'] = $file->id;
+        $context['file_name'] = $file->base_name;
+        $context['file_size'] = $file->size;
+        $context['mime_type'] = $mime;
+        $context['upload_method'] = $file->upload_method ?? 'unknown';
+        $context['uploaded_at'] = $file->created_at?->toIso8601String();
+
+        if ($fileType === 'image') {
+            // Handle image files
+            $content['file_name'] = $file->base_name;
+            
+            $downloadEnabled = $this->shouldDownloadImages();
+            
+            $this->logger->debug('[Content Extractor] Processing uploaded image file', [
+                'file_id' => $file->id,
+                'file_name' => $file->base_name,
+                'upload_method' => $file->upload_method,
+                'path' => $file->path ?? 'null',
+                'url' => $file->url ?? 'null',
+                'download_enabled' => $downloadEnabled,
+            ]);
+
+            $imageData = null;
+            $imageSource = null;
+            
+            // Try to get image data if downloading is enabled
+            if ($downloadEnabled) {
+                // Determine if we should read locally or download
+                $isLocal = $file->upload_method === 'local';
+                
+                if ($isLocal && $file->path) {
+                    // Try to read from local filesystem
+                    // fof/upload stores files in 'files/' subdirectory under flarum-assets disk
+                    $localPath = 'files/' . $file->path;
+                    
+                    $this->logger->debug('[Content Extractor] Attempting to read local image', [
+                        'file_id' => $file->id,
+                        'original_path' => $file->path,
+                        'local_path' => $localPath,
+                    ]);
+                    
+                    $imageData = $this->readLocalImage('flarum-assets', $localPath);
+                    if ($imageData) {
+                        $imageSource = 'local_file';
+                        $this->logger->info('[Content Extractor] Successfully read local uploaded image', [
+                            'file_id' => $file->id,
+                            'path' => $localPath,
+                        ]);
+                    } else {
+                        $this->logger->warning('[Content Extractor] Failed to read local image', [
+                            'file_id' => $file->id,
+                            'original_path' => $file->path,
+                            'local_path' => $localPath,
+                        ]);
+                    }
+                }
+                
+                // If local read failed or file is remote, try downloading from URL
+                if (!$imageData && $file->url) {
+                    $this->logger->debug('[Content Extractor] Attempting to download image from URL', [
+                        'file_id' => $file->id,
+                        'url' => $file->url,
+                    ]);
+                    
+                    $imageData = $this->downloadImage($file->url);
+                    if ($imageData) {
+                        $imageSource = 'downloaded_url';
+                        $this->logger->info('[Content Extractor] Successfully downloaded image from URL', [
+                            'file_id' => $file->id,
+                            'url' => $file->url,
+                        ]);
+                    } else {
+                        $this->logger->warning('[Content Extractor] Failed to download image from URL', [
+                            'file_id' => $file->id,
+                            'url' => $file->url,
+                        ]);
+                    }
+                }
+            } else {
+                $this->logger->debug('[Content Extractor] Image download disabled, will use URL reference only', [
+                    'file_id' => $file->id,
+                ]);
+            }
+            
+            // Add image to results
+            if ($imageData) {
+                // Successfully got image data
+                $images[] = [
+                    'type' => 'uploaded_file',
+                    'data' => $imageData,
+                    'source' => $imageSource,
+                ];
+                $this->logger->info('[Content Extractor] Added image with data to audit', [
+                    'file_id' => $file->id,
+                    'source' => $imageSource,
+                ]);
+            } elseif ($file->url) {
+                // Fallback to URL reference (OpenAI may not support this for all endpoints)
+                $images[] = [
+                    'type' => 'uploaded_file',
+                    'url' => $file->url,
+                ];
+                $this->logger->warning('[Content Extractor] Added image URL reference only (no data)', [
+                    'file_id' => $file->id,
+                    'url' => $file->url,
+                    'reason' => $downloadEnabled ? 'download_failed' : 'download_disabled',
+                ]);
+            } else {
+                $this->logger->error('[Content Extractor] Cannot add image: no data and no URL', [
+                    'file_id' => $file->id,
+                ]);
+            }
+        } elseif ($fileType === 'text') {
+            // Handle text files
+            $content['file_name'] = $file->base_name;
+            
+            $this->logger->debug('[Content Extractor] Processing uploaded text file', [
+                'file_id' => $file->id,
+                'file_name' => $file->base_name,
+                'upload_method' => $file->upload_method,
+                'mime' => $mime,
+            ]);
+
+            // Read text content
+            try {
+                $filesystem = resolve(\Illuminate\Contracts\Filesystem\Factory::class);
+                
+                $isLocal = $file->upload_method === 'local';
+                
+                if ($isLocal && $file->path) {
+                    // Read from local filesystem
+                    // fof/upload stores files in 'files/' subdirectory under flarum-assets disk
+                    $localPath = 'files/' . $file->path;
+                    
+                    /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
+                    $storage = $filesystem->disk('flarum-assets');
+                    
+                    if ($storage->exists($localPath)) {
+                        $textContent = $storage->get($localPath);
+                        
+                        // Truncate if too large
+                        $maxSize = 64 * 1024; // 64KB
+                        if (strlen($textContent) > $maxSize) {
+                            $textContent = substr($textContent, 0, $maxSize) . "\n[... content truncated ...]";
+                        }
+                        
+                        $content['file_content'] = $textContent;
+                        
+                        $this->logger->info('[Content Extractor] Successfully read local text file', [
+                            'file_id' => $file->id,
+                            'path' => $localPath,
+                            'content_length' => strlen($textContent),
+                        ]);
+                    } else {
+                        $this->logger->warning('[Content Extractor] Text file not found', [
+                            'file_id' => $file->id,
+                            'original_path' => $file->path,
+                            'local_path' => $localPath,
+                        ]);
+                        $content['file_content'] = '[File not found]';
+                    }
+                } elseif ($file->url) {
+                    // Download from remote URL
+                    $this->logger->debug('[Content Extractor] Downloading remote text file', [
+                        'file_id' => $file->id,
+                        'url' => $file->url,
+                    ]);
+
+                    // SSRF 保护：校验 URL 安全性并固化 DNS 解析结果，防止 DNS 重绑定（TOCTOU）攻击
+                    $textUrlParsed = parse_url($file->url);
+                    $textHost = $textUrlParsed['host'] ?? '';
+                    $textResolvedIp = $this->resolveToSafeIp($file->url);
+                    if ($textResolvedIp === null) {
+                        $this->logger->warning('[Content Extractor] Blocked unsafe text file URL (SSRF protection)', [
+                            'file_id' => $file->id,
+                            'url' => $file->url,
+                        ]);
+                        $content['file_content'] = '[Blocked: unsafe URL]';
+                    } else {
+                        $client = new Client([
+                            'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
+                            'connect_timeout' => 5,
+                            // SSRF 保护：禁用重定向，防止攻击者通过外部服务器 302 重定向到内网
+                            'allow_redirects' => false,
+                            // SSRF 保护：固化 DNS 解析结果，确保实际连接目标与检查时一致（防 DNS 重绑定）
+                            'curl' => [
+                                CURLOPT_RESOLVE => [
+                                    "{$textHost}:80:{$textResolvedIp}",
+                                    "{$textHost}:443:{$textResolvedIp}",
+                                ],
+                            ],
+                        ]);
+
+                        $response = $client->get($file->url);
+                        $textContent = (string) $response->getBody();
+
+                        // Truncate if too large
+                        $maxSize = 64 * 1024; // 64KB
+                        if (strlen($textContent) > $maxSize) {
+                            $textContent = substr($textContent, 0, $maxSize) . "\n[... content truncated ...]";
+                        }
+
+                        $content['file_content'] = $textContent;
+
+                        $this->logger->info('[Content Extractor] Successfully downloaded remote text file', [
+                            'file_id' => $file->id,
+                            'url' => $file->url,
+                            'content_length' => strlen($textContent),
+                        ]);
+                    }
+                } else {
+                    $this->logger->warning('[Content Extractor] Cannot read text file: no path or URL', [
+                        'file_id' => $file->id,
+                    ]);
+                    $content['file_content'] = '[Cannot read file]';
+                }
+            } catch (\Exception $e) {
+                $this->logger->error('[Content Extractor] Failed to read text file', [
+                    'file_id' => $file->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $content['file_content'] = '[Error reading file: ' . $e->getMessage() . ']';
+            }
+        }
+
+        return [
+            'type' => 'upload',
             'content' => $content,
             'context' => $context,
             'images' => $images,
@@ -297,34 +714,48 @@ class ContentExtractor
 
         $userMessage = $this->formatUserMessage($extractedData);
         
-        // Check if there are images
+        // Check if there are images with data (base64)
+        $hasImageData = false;
         if (!empty($extractedData['images'])) {
+            foreach ($extractedData['images'] as $image) {
+                if (isset($image['data'])) {
+                    $hasImageData = true;
+                    break;
+                }
+            }
+        }
+        
+        $this->logger->debug('[Content Extractor] Building messages', [
+            'images_count' => count($extractedData['images'] ?? []),
+            'has_image_data' => $hasImageData,
+        ]);
+        
+        // Only build multimodal content if we have actual image data
+        if ($hasImageData) {
             $content = [
                 ['type' => 'text', 'text' => $userMessage],
             ];
 
             foreach ($extractedData['images'] as $image) {
                 if (isset($image['data'])) {
-                    // Base64 encoded image
+                    // Base64 encoded image - use multimodal format
                     $content[] = [
                         'type' => 'image_url',
                         'image_url' => [
                             'url' => $image['data'],
                         ],
                     ];
-                } elseif (isset($image['url'])) {
-                    // Image URL
-                    $content[] = [
-                        'type' => 'image_url',
-                        'image_url' => [
-                            'url' => $image['url'],
-                        ],
-                    ];
                 }
             }
+            
+            $this->logger->info('[Content Extractor] Using multimodal format', [
+                'content_parts' => count($content),
+            ]);
 
             $messages[] = ['role' => 'user', 'content' => $content];
         } else {
+            $this->logger->info('[Content Extractor] Using text-only format');
+            // Text-only message (including image URLs as text)
             $messages[] = ['role' => 'user', 'content' => $userMessage];
         }
 
@@ -340,6 +771,15 @@ class ContentExtractor
     private function formatUserMessage(array $data): string
     {
         $parts = [];
+
+        $this->logger->debug('[Content Extractor] formatUserMessage called', [
+            'type' => $data['type'] ?? 'unknown',
+            'has_content' => !empty($data['content']),
+            'content_keys' => !empty($data['content']) ? array_keys($data['content']) : [],
+            'content_values' => !empty($data['content']) ? array_map(function($v) {
+                return is_string($v) ? substr($v, 0, 50) : gettype($v);
+            }, $data['content']) : [],
+        ]);
 
         $parts[] = "Content Type: {$data['type']}";
         $parts[] = '';
@@ -466,10 +906,30 @@ class ContentExtractor
      */
     private function downloadImage(string $url): ?string
     {
+        // SSRF 保护：校验 URL 安全性并固化 DNS 解析结果，防止 DNS 重绑定（TOCTOU）攻击
+        $parsedUrlForSsrf = parse_url($url);
+        $hostForSsrf = $parsedUrlForSsrf['host'] ?? '';
+        $resolvedIp = $this->resolveToSafeIp($url);
+        if ($resolvedIp === null) {
+            $this->logger->warning('[Content Extractor] Blocked potentially unsafe URL (SSRF protection)', [
+                'url' => $url,
+            ]);
+            return null;
+        }
+
         try {
             $client = new Client([
                 'timeout' => self::IMAGE_DOWNLOAD_TIMEOUT,
                 'connect_timeout' => 5,
+                // SSRF 保护：禁用重定向，防止攻击者通过外部服务器 302 重定向到内网
+                'allow_redirects' => false,
+                // SSRF 保护：固化 DNS 解析结果，确保实际连接目标与检查时一致（防 DNS 重绑定）
+                'curl' => [
+                    CURLOPT_RESOLVE => [
+                        "{$hostForSsrf}:80:{$resolvedIp}",
+                        "{$hostForSsrf}:443:{$resolvedIp}",
+                    ],
+                ],
             ]);
 
             $response = $client->get($url, [
@@ -477,6 +937,15 @@ class ContentExtractor
                     'User-Agent' => 'Flarum-OpenAI-Content-Audit/1.0',
                 ],
             ]);
+
+            // 检查 HTTP 状态码，因为禁用了重定向，需确保请求成功
+            if ($response->getStatusCode() !== 200) {
+                 $this->logger->warning('[Content Extractor] Invalid status code or redirect attempt', [
+                    'url' => $url,
+                    'status' => $response->getStatusCode()
+                ]);
+                return null;
+            }
 
             $contentLength = $response->getHeader('Content-Length')[0] ?? 0;
             if ($contentLength > self::MAX_IMAGE_SIZE) {
@@ -501,6 +970,7 @@ class ContentExtractor
 
             $base64 = base64_encode($body);
             return "data:{$contentType};base64,{$base64}";
+            
         } catch (GuzzleException $e) {
             $this->logger->warning('[Content Extractor] Failed to download image', [
                 'url' => $url,
@@ -514,5 +984,74 @@ class ContentExtractor
             ]);
             return null;
         }
+    }
+
+    /**
+     * 验证 URL 是否安全（防止 SSRF 攻击），并返回解析出的第一个安全 IP。
+     *
+     * 返回值同时用于 CURLOPT_RESOLVE 固化连接目标，消除 DNS 重绑定（TOCTOU）攻击窗口：
+     * 检查时与实际请求时使用同一次 DNS 解析结果，攻击者无法在两步之间切换 DNS 响应。
+     *
+     * @param string $url
+     * @return string|null 校验通过时返回已解析的安全 IP；任何校验失败时返回 null
+     */
+    private function resolveToSafeIp(string $url): ?string
+    {
+        // 校验 URL 格式
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+
+        $parsedUrl = parse_url($url);
+
+        // 仅允许 http 和 https 协议，防止 file://, gopher://, dict:// 等协议利用
+        $scheme = strtolower($parsedUrl['scheme'] ?? '');
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return null;
+        }
+
+        $host = $parsedUrl['host'] ?? '';
+        if (!$host) {
+            return null;
+        }
+
+        // 若 host 本身是 IP 字面量，直接校验（无需 DNS 解析）
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            $isSafe = filter_var(
+                $host,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+            );
+            return $isSafe ? $host : null;
+        }
+
+        // DNS 解析，获取主机名对应的所有 IP 记录（IPv4 优先，同时支持 IPv6）
+        $records = dns_get_record($host, DNS_A + DNS_AAAA);
+        if (empty($records)) {
+            return null;
+        }
+
+        $safeIp = null;
+        foreach ($records as $record) {
+            $ip = $record['ip'] ?? $record['ipv6'] ?? null;
+            if ($ip === null) {
+                continue;
+            }
+            // 检查 IP 是否属于私有地址（如 192.168.x.x）或保留地址（如 127.0.0.1）
+            $isValidIp = filter_var(
+                $ip,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+            );
+            if (!$isValidIp) {
+                return null; // 解析出任何内网/保留 IP，直接拒绝整个请求
+            }
+            // 优先采用 IPv4 地址用于 CURLOPT_RESOLVE（兼容性更好）
+            if ($safeIp === null || isset($record['ip'])) {
+                $safeIp = $ip;
+            }
+        }
+
+        return $safeIp;
     }
 }

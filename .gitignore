@@ -12,4 +12,5 @@ tests/.phpunit.result.cache
 .vscode
 js/coverage-ts
 
-flarum-instance
+flarum-instance-2.0/
+flarum-plugins-1.x/

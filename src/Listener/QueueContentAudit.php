@@ -16,13 +16,15 @@ use Flarum\Flags\Flag;
 use Flarum\Post\Event\Saving as PostSaving;
 use Flarum\Post\CommentPost;
 use Flarum\Settings\SettingsRepositoryInterface;
-use Flarum\User\Event\AvatarSaving;
+use Flarum\User\Event\AvatarChanged;
 use Flarum\User\Event\Saving as UserSaving;
 use Ghostchu\Openaicontentaudit\Job\AuditContentJob;
 use Ghostchu\Openaicontentaudit\Service\FlagService;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\Queue;
 use Psr\Log\LoggerInterface;
+use FoF\Upload\Events\File\WasSaved as FileWasSaved;
+use FoF\Upload\File;
 
 class QueueContentAudit
 {
@@ -45,11 +47,18 @@ class QueueContentAudit
         $events->listen(PostSaving::class, [$this, 'handlePostSaving']);
         $events->listen(DiscussionSaving::class, [$this, 'handleDiscussionSaving']);
         $events->listen(UserSaving::class, [$this, 'handleUserSaving']);
-        $events->listen(AvatarSaving::class, [$this, 'handleAvatarSaving']);
+        $events->listen(AvatarChanged::class, [$this, 'handleAvatarChanged']);
         
         // Also listen for cover upload if sycho/flarum-profile-cover is installed
         if (class_exists('SychO\\ProfileCover\\Event\\CoverSaving')) {
             $events->listen('SychO\\ProfileCover\\Event\\CoverSaving', [$this, 'handleCoverSaving']);
+        }
+
+        // Also listen for file uploads if fof/upload is installed
+        if (class_exists('FoF\\Upload\\Events\\File\\WasSaved')) {
+            $events->listen(FileWasSaved::class, [$this, 'handleFileWasSaved']);
+        } else {
+            $this->logger->warning('[Queue Content Audit] fof/upload not detected, file upload audit disabled');
         }
     }
 
@@ -80,11 +89,23 @@ class QueueContentAudit
 
         // Check if this is a new post or edited post
         $isNew = !$post->exists;
-        $isEdited = $post->exists && $post->isDirty('content');
+        // Check if content is being edited via API (isDirty doesn't work due to Flarum's internal formatting)
+        $isEdited = $post->exists && isset($event->data['attributes']['content']);
 
         if (!$isNew && !$isEdited) {
+            $this->logger->debug('[Queue Content Audit] Post not new or edited, skipping', [
+                'post_id' => $post->id,
+                'is_new' => $isNew,
+                'is_edited' => $isEdited,
+            ]);
             return;
         }
+
+        $this->logger->debug('[Queue Content Audit] Post requires audit', [
+            'post_id' => $post->id,
+            'is_new' => $isNew,
+            'is_edited' => $isEdited,
+        ]);
 
         // Apply pre-approve if enabled
         if ($isNew && $this->isPreApproveEnabled() && !$this->canBypassPreApprove($actor)) {
@@ -138,11 +159,23 @@ class QueueContentAudit
 
         // Check if title changed
         $isNew = !$discussion->exists;
-        $titleChanged = $discussion->exists && $discussion->isDirty('title');
+        // Check if title is being edited via API
+        $titleChanged = $discussion->exists && isset($event->data['attributes']['title']);
 
         if (!$isNew && !$titleChanged) {
+            $this->logger->debug('[Queue Content Audit] Discussion title not new or edited, skipping', [
+                'discussion_id' => $discussion->id,
+                'is_new' => $isNew,
+                'title_changed' => $titleChanged,
+            ]);
             return;
         }
+
+        $this->logger->debug('[Queue Content Audit] Discussion requires audit', [
+            'discussion_id' => $discussion->id,
+            'is_new' => $isNew,
+            'title_changed' => $titleChanged,
+        ]);
 
         // Apply pre-approve if enabled
         if ($isNew && $this->isPreApproveEnabled() && !$this->canBypassPreApprove($actor)) {
@@ -195,53 +228,76 @@ class QueueContentAudit
 
         // Check for changed auditable fields
         // Note: Only check fields that may exist
-        // - username, display_name, avatar_url are core fields
-        // - bio requires fof/user-bio extension
-        // - cover requires fof/profile-cover extension (add manually if installed)
-        $auditableFields = ['username', 'display_name', 'avatar_url'];
+        // - username, display_name are core fields
+        // - avatar_url is handled by handleAvatarChanged() listener
+        // - bio requires fof/user-bio extension  
+        // - cover requires sycho/flarum-profile-cover extension
+        // - nickname requires flarum/nicknames extension
+        $auditableFields = ['username', 'display_name', 'bio', 'cover', 'nickname'];
         
-        // Check optional fields from extensions
-        if (method_exists($user, 'bio') || array_key_exists('bio', $user->getAttributes())) {
-            $auditableFields[] = 'bio';
-        }
-        if (method_exists($user, 'cover') || array_key_exists('cover', $user->getAttributes())) {
-            $auditableFields[] = 'cover';
-        }
+        $this->logger->debug('[Queue Content Audit] Checking user fields for changes', [
+            'user_id' => $user->id,
+            'dirty_attributes' => array_keys($user->getDirty()),
+            'auditable_fields' => $auditableFields,
+        ]);
         
         $changes = [];
 
         foreach ($auditableFields as $field) {
-            if ($user->isDirty($field)) {
-                // Get attribute value (will use accessor if defined)
-                $changes[$field] = $user->getAttribute($field);
+            // Check both isDirty (for some fields) and API data (more reliable)
+            $isDirty = $user->isDirty($field);
+            $inApiData = isset($event->data['attributes'][$field]);
+            
+            if ($isDirty || $inApiData) {
+                // Prefer API data (new value) over getAttribute (which may return old value)
+                if ($inApiData) {
+                    $changes[$field] = $event->data['attributes'][$field];
+                } else {
+                    // Fallback to getAttribute for isDirty fields not in API data
+                    $changes[$field] = $user->getAttribute($field);
+                }
+                
+                $this->logger->debug('[Queue Content Audit] Field changed', [
+                    'field' => $field,
+                    'value' => is_string($changes[$field]) ? $changes[$field] : gettype($changes[$field]),
+                    'detected_via' => $inApiData ? 'API_data' : 'isDirty',
+                    'value_source' => $inApiData ? 'event_data' : 'user_attribute',
+                ]);
             }
         }
 
         if (empty($changes)) {
+            $this->logger->debug('[Queue Content Audit] No profile changes to audit', [
+                'user_id' => $user->id,
+                'api_data_keys' => isset($event->data['attributes']) ? array_keys($event->data['attributes']) : [],
+            ]);
             return;
         }
 
         // Queue audit after save
         $user->afterSave(function ($user) use ($changes) {
-            // Re-fetch changed fields to get full URLs for images
+            // Prepare final changes - use captured values, only re-fetch for special cases
             $finalChanges = [];
-            foreach (array_keys($changes) as $field) {
-                $value = $user->getAttribute($field);
-                
-                // For cover field, convert filename to full URL
-                if ($field === 'cover' && $value && !str_contains($value, '://')) {
-                    try {
-                        $filesystem = resolve(\Illuminate\Contracts\Filesystem\Factory::class);
-                        $coversDir = $filesystem->disk('sycho-profile-cover');
-                        $finalChanges[$field] = $coversDir->url($value);
-                    } catch (\Exception $e) {
-                        $this->logger->warning('[Queue Content Audit] Failed to get cover URL', [
-                            'user_id' => $user->id,
-                            'error' => $e->getMessage(),
-                        ]);
-                        $finalChanges[$field] = $value;
+            foreach ($changes as $field => $value) {
+                // For cover field, check if it's a local file
+                if ($field === 'cover') {
+                    $coverPath = $value ?? $user->getAttribute($field);
+                    
+                    if ($coverPath && !str_contains($coverPath, '://')) {
+                        // Local file
+                        $finalChanges[$field] = [
+                            '_local_file' => true,
+                            '_disk' => 'sycho-profile-cover',
+                            '_path' => $coverPath,
+                            'url' => null, // Will generate URL in ContentExtractor if needed
+                        ];
+                    } else {
+                        // External URL
+                        $finalChanges[$field] = $coverPath;
                     }
                 } else {
+                    // Use the captured value from when the change was detected
+                    // This preserves the actual submitted value before any other listeners modify it
                     $finalChanges[$field] = $value;
                 }
             }
@@ -249,6 +305,9 @@ class QueueContentAudit
             $this->logger->info('[Queue Content Audit] Queueing user profile audit', [
                 'user_id' => $user->id,
                 'changed_fields' => array_keys($finalChanges),
+                'final_changes' => array_map(function($v) {
+                    return is_array($v) ? '[local_file]' : (is_string($v) ? substr($v, 0, 50) : gettype($v));
+                }, $finalChanges),
             ]);
 
             $this->queue->push(new AuditContentJob(
@@ -306,15 +365,25 @@ class QueueContentAudit
     }
 
     /**
-     * Handle avatar saving event.
+     * Note: Avatar and Cover auditing is handled by handleAvatarChanged() and handleUserSaving() methods.
+     * 
+     * In Flarum 1.8.x:
+     * - Avatar changes trigger AvatarChanged event after the file is saved
+     * - Cover changes update the user model and trigger UserSaving event
+     * 
+     * By monitoring both events, we can properly audit these changes after the files are saved.
+     */
+
+    /**
+     * Handle avatar changed event.
      *
-     * @param AvatarSaving $event
+     * @param AvatarChanged $event
      * @return void
      */
-    public function handleAvatarSaving(AvatarSaving $event): void
+    public function handleAvatarChanged(AvatarChanged $event): void
     {
         $user = $event->user;
-        $actor = $event->actor;
+        $actor = $event->actor ?? $user;
 
         // Check if user can bypass audit
         if ($this->canBypassAudit($actor, 'user_profile')) {
@@ -324,33 +393,50 @@ class QueueContentAudit
             return;
         }
 
-        // Queue audit after the avatar is uploaded
-        // Use afterSave to get the final avatar URL
-        $user->afterSave(function ($user) {
-            $avatarUrl = $user->getAttribute('avatar_url');
-            
-            if (!$avatarUrl) {
-                return;
-            }
-
-            $this->logger->info('[Queue Content Audit] Queueing avatar audit', [
+        // Get raw avatar path (not the URL from accessor)
+        $avatarPath = $user->getRawOriginal('avatar_url');
+        
+        if (!$avatarPath) {
+            $this->logger->debug('[Queue Content Audit] Avatar path is empty, skipping audit', [
                 'user_id' => $user->id,
-                'avatar_url' => $avatarUrl,
             ]);
+            return;
+        }
 
-            $this->queue->push(new AuditContentJob(
-                'user_profile',
-                null,
-                $user->id,
-                ['avatar_url' => $avatarUrl]
-            ));
-        });
+        $this->logger->info('[Queue Content Audit] Queueing avatar audit', [
+            'user_id' => $user->id,
+            'actor_id' => $actor->id,
+            'avatar_path' => $avatarPath,
+        ]);
+
+        // Prepare avatar data for audit
+        $changes = [];
+        
+        // Check if avatar_path is a local file (no protocol in raw value)
+        if (!str_contains($avatarPath, '://')) {
+            $changes['avatar_url'] = [
+                '_local_file' => true,
+                '_disk' => 'flarum-avatars',
+                '_path' => $avatarPath,
+                'url' => $user->avatar_url, // Use accessor for fallback URL
+            ];
+        } else {
+            // External URL (e.g., from OAuth providers)
+            $changes['avatar_url'] = $avatarPath;
+        }
+
+        $this->queue->push(new AuditContentJob(
+            'user_profile',
+            null,
+            $user->id,
+            $changes
+        ));
     }
 
     /**
-     * Handle cover saving event (for sycho/flarum-profile-cover).
+     * Handle cover saving event.
      *
-     * @param mixed $event
+     * @param \SychO\ProfileCover\Event\CoverSaving $event
      * @return void
      */
     public function handleCoverSaving($event): void
@@ -362,47 +448,187 @@ class QueueContentAudit
         if ($this->canBypassAudit($actor, 'user_profile')) {
             $this->logger->debug('[Queue Content Audit] User bypassed cover audit', [
                 'user_id' => $actor->id,
+                'target_user_id' => $user->id,
             ]);
             return;
         }
 
-        // Queue audit after the cover is uploaded
-        // Use afterSave to get the final cover filename and convert to URL
+        // Queue audit after save (cover is set by uploader after this event)
         $user->afterSave(function ($user) {
-            $cover = $user->getAttribute('cover');
+            // Get raw cover path
+            $coverPath = $user->getRawOriginal('cover') ?? $user->getAttribute('cover');
             
-            if (!$cover) {
+            if (!$coverPath) {
+                $this->logger->debug('[Queue Content Audit] Cover path is empty, skipping audit', [
+                    'user_id' => $user->id,
+                ]);
                 return;
-            }
-
-            // Convert cover filename to full URL
-            $coverUrl = $cover;
-            if (!str_contains($cover, '://')) {
-                try {
-                    $filesystem = resolve(\Illuminate\Contracts\Filesystem\Factory::class);
-                    $coversDir = $filesystem->disk('sycho-profile-cover');
-                    $coverUrl = $coversDir->url($cover);
-                } catch (\Exception $e) {
-                    $this->logger->warning('[Queue Content Audit] Failed to get cover URL', [
-                        'user_id' => $user->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                    return;
-                }
             }
 
             $this->logger->info('[Queue Content Audit] Queueing cover audit', [
                 'user_id' => $user->id,
-                'cover_url' => $coverUrl,
+                'cover_path' => $coverPath,
             ]);
+
+            // Prepare cover data for audit
+            $changes = [];
+            
+            // Cover path should be a local file (no protocol in raw value)
+            if (!str_contains($coverPath, '://')) {
+                $changes['cover'] = [
+                    '_local_file' => true,
+                    '_disk' => 'sycho-profile-cover',
+                    '_path' => $coverPath,
+                    'url' => null,
+                ];
+            } else {
+                // External URL (unlikely for cover)
+                $changes['cover'] = $coverPath;
+            }
 
             $this->queue->push(new AuditContentJob(
                 'user_profile',
                 null,
                 $user->id,
-                ['cover' => $coverUrl]
+                $changes
             ));
         });
     }
-}
 
+    /**
+     * Handle file upload event from fof/upload.
+     *
+     * @param FileWasSaved $event
+     * @return void
+     */
+    public function handleFileWasSaved(FileWasSaved $event): void
+    {
+        $file = $event->file;
+        $actor = $event->actor;
+        $mime = $event->mime;
+
+        // Log that event was triggered
+        $this->logger->info('[Queue Content Audit] File upload event received', [
+            'file_id' => $file->id,
+            'file_name' => $file->base_name,
+            'mime' => $mime,
+            'size' => $file->size,
+            'user_id' => $actor->id,
+        ]);
+
+        // Check if upload audit is enabled
+        if (!$this->settings->get('ghostchu-openai-content-audit.upload_audit_enabled', false)) {
+            $this->logger->debug('[Queue Content Audit] Upload audit is disabled', [
+                'file_id' => $file->id,
+            ]);
+            return;
+        }
+
+        // Check if user can bypass audit
+        if ($this->canBypassAudit($actor, 'upload')) {
+            $this->logger->debug('[Queue Content Audit] User bypassed upload audit', [
+                'user_id' => $actor->id,
+                'file_id' => $file->id,
+            ]);
+            return;
+        }
+
+        // Check if file is already hidden (might be re-saving)
+        if ($file->hidden) {
+            $this->logger->debug('[Queue Content Audit] File is hidden, skipping audit', [
+                'file_id' => $file->id,
+            ]);
+            return;
+        }
+
+        // Determine if this file type should be audited
+        $shouldAudit = false;
+        $fileType = null;
+
+        // Check if it's an image
+        if (str_starts_with($mime, 'image/')) {
+            $supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'];
+            if (in_array($mime, $supportedImageTypes)) {
+                $maxSize = (int)$this->settings->get('ghostchu-openai-content-audit.upload_audit_image_max_size', 10) * 1024 * 1024; // Convert MB to bytes
+                if ($file->size <= $maxSize) {
+                    $shouldAudit = true;
+                    $fileType = 'image';
+                } else {
+                    $this->logger->debug('[Queue Content Audit] Image exceeds max size', [
+                        'file_id' => $file->id,
+                        'file_size' => $file->size,
+                        'max_size' => $maxSize,
+                    ]);
+                }
+            } else {
+                $this->logger->debug('[Queue Content Audit] Unsupported image type', [
+                    'file_id' => $file->id,
+                    'mime' => $mime,
+                ]);
+            }
+        }
+        // Check if it's a text file
+        elseif (in_array($mime, [
+            'text/plain',
+            'text/markdown',
+            'text/csv',
+            'application/x-bittorrent',
+        ])) {
+            $maxSize = (int)$this->settings->get('ghostchu-openai-content-audit.upload_audit_text_max_size', 64) * 1024; // Convert KB to bytes
+            if ($file->size <= $maxSize) {
+                $shouldAudit = true;
+                $fileType = 'text';
+            } else {
+                $this->logger->debug('[Queue Content Audit] Text file exceeds max size', [
+                    'file_id' => $file->id,
+                    'file_size' => $file->size,
+                    'max_size' => $maxSize,
+                ]);
+            }
+        } else {
+            $this->logger->debug('[Queue Content Audit] File type not supported for audit', [
+                'file_id' => $file->id,
+                'mime' => $mime,
+            ]);
+        }
+
+        if (!$shouldAudit) {
+            return;
+        }
+
+        // Apply pre-approve if enabled
+        if ($this->isPreApproveEnabled() && !$this->canBypassPreApprove($actor)) {
+            $file->hidden = true;
+            $file->save();
+            $this->logger->debug('[Queue Content Audit] Pre-approve: File hidden pending audit', [
+                'file_id' => $file->id,
+                'user_id' => $actor->id,
+            ]);
+        }
+
+        // Queue audit job
+        $this->logger->info('[Queue Content Audit] Queueing file upload audit', [
+            'file_id' => $file->id,
+            'file_name' => $file->base_name,
+            'file_type' => $fileType,
+            'file_size' => $file->size,
+            'mime' => $mime,
+            'user_id' => $actor->id,
+        ]);
+
+        $this->queue->push(new AuditContentJob(
+            'upload',
+            $file->id,
+            $actor->id,
+            [
+                'file_name' => $file->base_name,
+                'file_type' => $fileType,
+                'mime' => $mime,
+                'size' => $file->size,
+                'path' => $file->path,
+                'url' => $file->url,
+                'upload_method' => $file->upload_method,
+            ]
+        ));
+    }
+}

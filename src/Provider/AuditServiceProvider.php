@@ -61,7 +61,8 @@ class AuditServiceProvider extends AbstractServiceProvider
                 $container->make('events'),
                 $container->make('log'),
                 $container->make(MessageNotifier::class),
-                $container->make(FlagService::class)
+                $container->make(FlagService::class),
+                $container->make(\Flarum\Notification\NotificationSyncer::class)
             );
         });
     }

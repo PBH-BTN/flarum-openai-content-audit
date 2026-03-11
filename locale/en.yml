@@ -26,11 +26,23 @@ ghostchu-openai-content-audit:
       suspend_days: Suspension Duration (Days)
       suspend_days_help: How many days to suspend users when "suspend" action is triggered
 
+      upload_audit_section: Upload Audit Settings
+      upload_audit_enabled: Enable Upload File Audit
+      upload_audit_enabled_help: Automatically audit uploaded files (images and text files) from fof/upload extension
+      upload_audit_image_max_size: Image File Max Size (MB)
+      upload_audit_image_max_size_help: Maximum size for image files to be audited. Larger files will be skipped.
+      upload_audit_text_max_size: Text File Max Size (KB)
+      upload_audit_text_max_size_help: Maximum size for text files to be audited. Larger files will be skipped.
+
       defaults_section: Default Values
       default_display_name: Default Display Name
       default_display_name_help: Replacement value for violating display names (leave empty to use username)
       default_bio: Default Bio
       default_bio_help: Replacement value for violating bio content
+      username_audit_enabled: Enable Username Audit
+      username_audit_enabled_help: Audit usernames for violations and automatically replace with random username when detected
+      nickname_audit_enabled: Enable Nickname Audit
+      nickname_audit_enabled_help: Audit nicknames for violations (requires flarum/nicknames extension), clears nickname when detected
       
       notification_section: Notification Settings
       send_message_notification: Send violation notification via private message
@@ -56,5 +68,31 @@ ghostchu-openai-content-audit:
   forum:
     flag:
       default_reason: Flagged by AI audit system
-    # Forum-side translations can be added here if needed
+    settings:
+      notify_content_violation_label: Notify me when content violates community guidelines
+    notifications:
+      content_violation_text: Your content may have violated community guidelines
+
+  email:
+    subject:
+      violation: "[Audit Notice] Your content may violate community guidelines"
+    body:
+      contentViolation: |-
+        Hello {recipient_display_name},
+
+        Our system has detected that your content (type: {content_type}) may violate community guidelines.
+
+        **Violation Reason:**
+        {conclusion}
+
+        Your content has been automatically processed. If you have any questions, please contact an administrator.
+
+        Thank you for your understanding and cooperation.
+
+        ---
+        {forum_url}
+    content_type:
+      post: Post Reply
+      discussion: Discussion Topic
+      user_profile: User Profile
 
