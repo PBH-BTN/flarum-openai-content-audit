@@ -12,10 +12,9 @@
 namespace Ghostchu\Openaicontentaudit;
 
 use Flarum\Extend;
-use Ghostchu\Openaicontentaudit\Api\Controller\ListAuditLogsController;
+use Ghostchu\Openaicontentaudit\Access\AuditLogPolicy;
 use Ghostchu\Openaicontentaudit\Api\Controller\RetryAuditController;
-use Ghostchu\Openaicontentaudit\Api\Controller\ShowAuditLogController;
-use Ghostchu\Openaicontentaudit\Api\Serializer\AuditLogSerializer;
+use Ghostchu\Openaicontentaudit\Api\Resource\AuditLogResource;
 use Ghostchu\Openaicontentaudit\Listener\QueueContentAudit;
 use Ghostchu\Openaicontentaudit\Notification\ContentViolationBlueprint;
 use Ghostchu\Openaicontentaudit\Provider\AuditServiceProvider;
@@ -41,10 +40,19 @@ return [
     (new Extend\ServiceProvider())
         ->register(AuditServiceProvider::class),
 
-    // API Routes
+    // Policies
+    (new Extend\Policy())
+        ->globalPolicy(AuditLogPolicy::class),
+
+    // API Resource — provides:
+    //   GET  /api/audit-logs       (Index, paginated, filterable, sortable)
+    //   GET  /api/audit-logs/{id}  (Show)
+    // Replaces the Flarum 1.x ListAuditLogsController + ShowAuditLogController
+    // + AuditLogSerializer (AbstractSerializer) pattern.
+    new Extend\ApiResource(AuditLogResource::class),
+
+    // Retry route: non-standard action, kept as a standalone PSR-15 handler
     (new Extend\Routes('api'))
-        ->get('/audit-logs', 'audit-logs.index', ListAuditLogsController::class)
-        ->get('/audit-logs/{id}', 'audit-logs.show', ShowAuditLogController::class)
         ->post('/audit-logs/{id}/retry', 'audit-logs.retry', RetryAuditController::class),
 
     // Settings with defaults
@@ -75,6 +83,8 @@ return [
         ->namespace('ghostchu-openai-content-audit', __DIR__.'/resources/views'),
 
     // Notification types
+    // Flarum 2.x: the serializer (2nd) argument was removed. Serialization is now
+    // handled by the registered ApiResource for the subject model (AuditLog → AuditLogResource).
     (new Extend\Notification())
-        ->type(ContentViolationBlueprint::class, AuditLogSerializer::class, ['alert', 'email']),
+        ->type(ContentViolationBlueprint::class, ['alert', 'email']),
 ];

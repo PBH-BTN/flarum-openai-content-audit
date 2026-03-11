@@ -14,18 +14,18 @@ namespace Ghostchu\Openaicontentaudit\Service;
 use Carbon\Carbon;
 use Flarum\Discussion\Discussion;
 use Flarum\Flags\Flag;
-use Flarum\Locale\Translator;
 use Flarum\Post\Post;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
 use Psr\Log\LoggerInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class FlagService
 {
     public function __construct(
         private SettingsRepositoryInterface $settings,
         private LoggerInterface $logger,
-        private Translator $translator
+        private TranslatorInterface $translator
     ) {
     }
 

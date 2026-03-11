@@ -16,6 +16,7 @@
     "declarationDir": "./dist-typings",
     "baseUrl": ".",
     "paths": {
+      // Flarum 2.x ships typings under js/dist-typings (same path as 1.x)
       "flarum/*": ["../vendor/flarum/core/js/dist-typings/*"],
 // <CUSTOM-2>
 // </CUSTOM-2>

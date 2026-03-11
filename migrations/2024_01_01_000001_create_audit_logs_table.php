@@ -18,7 +18,7 @@ return Migration::createTable('oaicontaudit_logs', function (Blueprint $table) {
     // Content identification
     $table->string('content_type', 50)->index(); // post, discussion, user_profile, avatar, etc.
     $table->unsignedBigInteger('content_id')->nullable()->index(); // ID of the content
-    $table->unsignedInteger('user_id')->index(); // User who created the content
+    $table->unsignedBigInteger('user_id')->index(); // User who created the content
     
     // Audit data
     $table->text('audited_content')->nullable(); // JSON: Snapshot of content audited

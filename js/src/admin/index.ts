@@ -1,13 +1,11 @@
 import app from 'flarum/admin/app';
-import AuditLog from '../common/models/AuditLog';
 
 export { default as extend } from './extend';
 
 app.initializers.add('ghostchu-openai-content-audit', () => {
-  // Register models
-  app.store.models['audit-logs'] = AuditLog;
+  // Model registration is handled in src/common/extend.ts via Extend.Store
 
-  // Register settings for the extension using Flarum 1.8 extensionData API
+  // Register settings for the extension using Flarum 1.8+ extensionData API
   app.extensionData
     .for('ghostchu-openai-content-audit')
     

@@ -11,36 +11,17 @@
 
 namespace Ghostchu\Openaicontentaudit\Api\Serializer;
 
-use Flarum\Api\Serializer\AbstractSerializer;
-use Ghostchu\Openaicontentaudit\Model\AuditLog;
-
-class AuditLogSerializer extends AbstractSerializer
+/**
+ * @deprecated Flarum 2.x removed the tobscure/json-api-document AbstractSerializer layer.
+ *
+ * Serialization is now handled by AuditLogResource (src/Api/Resource/AuditLogResource.php)
+ * which uses the new tobyz/json-api-server based Resource API.
+ *
+ * This class is kept as an empty stub to avoid breaking any third-party code that may
+ * reference the class name. It can be safely removed once all consumers are updated.
+ *
+ * @see \Ghostchu\Openaicontentaudit\Api\Resource\AuditLogResource
+ */
+class AuditLogSerializer
 {
-    /**
-     * {@inheritdoc}
-     */
-    protected $type = 'audit-logs';
-
-    /**
-     * {@inheritdoc}
-     */
-    protected function getDefaultAttributes($model)
-    {
-        if (!($model instanceof AuditLog)) {
-            throw new \InvalidArgumentException(
-                'Model must be an instance of ' . AuditLog::class
-            );
-        }
-
-        return [
-            'id' => $model->id,
-            'contentType' => $model->content_type,
-            'contentId' => $model->content_id,
-            'confidence' => $model->confidence,
-            'conclusion' => $model->conclusion,
-            'actionsTaken' => $model->actions_taken,
-            'createdAt' => $this->formatDate($model->created_at),
-            'updatedAt' => $this->formatDate($model->updated_at),
-        ];
-    }
 }

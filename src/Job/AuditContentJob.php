@@ -14,18 +14,26 @@ namespace Ghostchu\Openaicontentaudit\Job;
 use Carbon\Carbon;
 use Flarum\Discussion\Discussion;
 use Flarum\Post\Post;
-use Flarum\Queue\AbstractJob;
 use Flarum\User\User;
 use Ghostchu\Openaicontentaudit\Exception\ContentNotFoundException;
 use Ghostchu\Openaicontentaudit\Model\AuditLog;
 use Ghostchu\Openaicontentaudit\Service\AuditResultHandler;
 use Ghostchu\Openaicontentaudit\Service\ContentExtractor;
 use Ghostchu\Openaicontentaudit\Service\OpenAIClient;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 use Psr\Log\LoggerInterface;
-use FoF\Upload\File;
 
-class AuditContentJob extends AbstractJob
+/**
+ * @note FoF\Upload\File is resolved at runtime inside loadContent() to avoid
+ *       a hard dependency on the optional fof/upload extension.
+ */
+class AuditContentJob implements ShouldQueue
 {
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     /**
      * Number of times to retry the job.
      *
@@ -177,7 +185,7 @@ class AuditContentJob extends AbstractJob
             'post' => Post::find($this->contentId),
             'discussion' => Discussion::find($this->contentId),
             'user_profile', 'avatar', 'username', 'bio' => User::find($this->userId),
-            'upload' => File::find($this->contentId),
+            'upload' => class_exists('FoF\Upload\File') ? \FoF\Upload\File::find($this->contentId) : null,
             default => throw new \Exception("Unknown content type: {$this->contentType}"),
         };
 

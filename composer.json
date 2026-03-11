@@ -11,8 +11,15 @@
     "type": "flarum-extension",
     "license": "MIT",
     "require": {
-        "flarum/core": "^1.8",
-        "openai-php/client": "^0.19.0"
+        "php": "^8.2",
+        "flarum/core": "^2.0",
+        "flarum/flags": "^2.0@beta",
+        "openai-php/client": "^0.10.0 || ^0.19.0"
+    },
+    "suggest": {
+        "flarum/messages": "Send private messages to users when violations are detected",
+        "fof/upload": "Audit file uploads (images) posted by users",
+        "flarum/suspend": "Automatically suspend users who violate content rules"
     },
     "authors": [
         {
@@ -80,7 +87,7 @@
         "test:setup": "Sets up a database for use with integration tests. Execute this only once."
     },
     "require-dev": {
-        "flarum/testing": "^1.8"
+        "flarum/testing": "^2.0"
     },
     "config": {
         "allow-plugins": {

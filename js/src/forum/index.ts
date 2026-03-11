@@ -3,15 +3,13 @@ import { override, extend } from 'flarum/common/extend';
 import PostComponent from 'flarum/forum/components/Post';
 import NotificationGrid from 'flarum/forum/components/NotificationGrid';
 import ContentViolationNotification from './notifications/ContentViolationNotification';
-import AuditLog from '../common/models/AuditLog';
 
 export { default as extend } from './extend';
 
 app.initializers.add('ghostchu-openai-content-audit', () => {
   console.log('[ghostchu/openai-content-audit] Hello, forum!');
 
-  // Register models
-  app.store.models['audit-logs'] = AuditLog;
+  // Model registration is handled in src/common/extend.ts via Extend.Store
 
   // Register notification components
   app.notificationComponents.contentViolation = ContentViolationNotification;
